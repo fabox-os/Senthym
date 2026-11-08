@@ -48,7 +48,7 @@ jobs:
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
           cd packaging
-          flatpak-builder --user --force-clean --repo=repo build-dir io.github.fabox_os.Senthym.yml
+          flatpak-builder --user --force-clean --disable-rofiles-fuse --repo=repo build-dir io.github.fabox_os.Senthym.yml
           flatpak build-bundle repo ../Senthym-linux.flatpak io.github.fabox_os.Senthym
       - uses: actions/upload-artifact@v4
         with:
