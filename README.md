@@ -17,6 +17,22 @@ Spotify, you already know where everything is. It has its own dark look with a b
 
 ---
 
+## Screenshots
+
+**Home and Now Playing with the music video**
+
+![Home and Now Playing with the music video](docs/screenshots/home-and-video.webp)
+
+**Browse all**
+
+![Browse all](docs/screenshots/browse-all.webp)
+
+**Synced lyrics**
+
+![Synced lyrics](docs/screenshots/lyrics.webp)
+
+---
+
 ## How it works
 
 Senthym comes **already set up with YouTube Music**. Open the app, type a song and press play. There is

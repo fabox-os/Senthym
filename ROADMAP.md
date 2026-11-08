@@ -15,22 +15,6 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 
 ---
 
-## Screenshots
-
-**Home and Now Playing with the music video**
-
-![Home and Now Playing with the music video](docs/screenshots/home-and-video.webp)
-
-**Browse all**
-
-![Browse all](docs/screenshots/browse-all.webp)
-
-**Synced lyrics**
-
-![Synced lyrics](docs/screenshots/lyrics.webp)
-
----
-
 ## 1. Interface (Spotify-style)
 
 - ✅ Home, search, library, artist, album, playlist and now-playing screens rebuilt after the Spotify desktop UI
