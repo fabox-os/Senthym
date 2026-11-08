@@ -23,9 +23,9 @@ jobs:
       - run: cargo build --release
       - name: Static ffmpeg (travels inside AppImage and Flatpak)
         run: |
-          curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          curl -fL -o ffmpeg.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-lgpl.tar.xz
           mkdir ff && tar -xf ffmpeg.tar.xz -C ff --strip-components=1
-          cp ff/ffmpeg packaging/ffmpeg
+          cp ff/bin/ffmpeg packaging/ffmpeg
       - name: .deb
         run: cargo deb --no-build -o Senthym-linux-amd64.deb
       - name: .rpm
@@ -100,8 +100,10 @@ jobs:
           done
           iconutil -c icns Senthym.iconset -o "$APP/Contents/Resources/Senthym.icns"
           # ffmpeg (decodes the picture) travels inside the app
-          curl -L -o ffmpeg.zip https://evermeet.cx/ffmpeg/getrelease/zip
-          unzip -o ffmpeg.zip -d "$APP/Contents/Resources"
+          for a in arm64 x64; do
+            curl -fL -o ffmpeg-$a https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-darwin-$a
+          done
+          lipo -create -output "$APP/Contents/Resources/ffmpeg" ffmpeg-arm64 ffmpeg-x64
           chmod +x "$APP/Contents/Resources/ffmpeg"
           cat > "$APP/Contents/Info.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -113,7 +115,7 @@ jobs:
             <key>CFBundleExecutable</key><string>senthym</string>
             <key>CFBundleIconFile</key><string>Senthym</string>
             <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleShortVersionString</key><string>1.6.0</string>
+            <key>CFBundleShortVersionString</key><string>1.0.0</string>
             <key>LSMinimumSystemVersion</key><string>11.0</string>
             <key>NSHighResolutionCapable</key><true/>
             <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
