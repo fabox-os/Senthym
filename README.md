@@ -210,3 +210,9 @@ app/
 See [ROADMAP.md](ROADMAP.md) for finished work and what comes next (packaging as AppImage / .deb, per-song
 video quality, account follow sync, long-run performance tests) and [CHANGELOG.md](CHANGELOG.md) for the
 history of changes.
+
+---
+
+## License
+
+Senthym is free software under the [GNU GPL v3](LICENSE).
