@@ -1,6 +1,6 @@
 # Senthym
 
-**Your Music. Your Freedom.**
+**Your Music. Your Freedom.**  ·  Version 1.0
 
 > **Platforms:** Senthym was designed and tested on **Linux (Ubuntu 26.04.1 LTS)**. It also works on
 > **Windows** and **macOS**, but those versions get less testing. If you find a bug on Windows or macOS,

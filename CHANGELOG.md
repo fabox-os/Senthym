@@ -2,9 +2,16 @@
 
 All notable changes to Senthym. Newest first within each group.
 
-## Unreleased
+## 1.0 — 2026-11-08
+
+First release.
 
 ### Added
+- Packages: `.deb`, `.rpm`, AppImage and Flatpak for Linux, a single `.exe` for Windows and a universal `.dmg` for macOS, built by GitHub Actions; Windows and macOS support in the code.
+- Automatic volume leveller for music-video sound (slow, so beats never pump the volume).
+- "Related music videos" laid over the bottom of the Now Playing picture, with the picture running behind it.
+- Black bars baked into a clip are cropped away so the picture fills the Now Playing view.
+- Hover card in the collapsed library rail (name and kind on one line each).
 - "Hide in this playlist" in the song menu (and "Show in this playlist"): the song stays in the list, greyed out, with a red − on hover to show it again; playback skips it (next, previous, end of song, shuffle, and when starting the playlist). An "Hidden in <playlist>. Undo" message appears after hiding. Saved per playlist; available in every playlist, Liked Songs and YouTube Music liked songs included.
 - New app icon: the Senthym logo (`assets/icon*.png`) is compiled into the program as the window / taskbar icon; a launcher entry (`senthym.desktop`) and icons were installed in `~/.local/share` so the desktop shows it.
 - Project renamed to Senthym everywhere: crate and binary (`senthym`), window title and app id, texts, log tag,
@@ -20,6 +27,8 @@ All notable changes to Senthym. Newest first within each group.
 - Roadmap (`ROADMAP.md`) and this changelog.
 
 ### Changed
+- Video quality starts on Auto; a fixed quality is only used (and saved) when you pick it in the menu.
+- Settings: the music-source row is called "Senthym Music Library"; the streaming-engine row and the third-party tool's name are no longer shown.
 - Accent colour changed from green to baby blue (#89CFF0): active labels and options, the playing song's title and equalizer, the liked check, the avatar when selected, selection colours and the Local files tile.
 - Custom window buttons (minimize, maximize / restore, close) replace the system frame; the empty top bar drags the window and the edges resize it.
 - Library lists followed artists and saved albums / playlists right after your own playlists; synced
@@ -30,6 +39,9 @@ All notable changes to Senthym. Newest first within each group.
 - Debug helpers: `--debug-audio` also prints video candidates; `--debug-search` prints radio covers.
 
 ### Fixed
+- Videos dropping to 240p on fast connections: a slow start was mistaken for a slow connection.
+- Video decoding now runs at lower priority and limited threads, so it cannot make the sound stutter.
+- Related-video hover card wrapped one word per line.
 - Video that can't keep up now really restarts at the audio position (one quality lower when automatic) and stays there for a while; the code that did this was never being called.
 - Build is now free of warnings: explicit number types in drawing code, unused imports, variables, old helpers and the unused sleep-timer action removed.
 - Followed artists missing from the library when signed in to YouTube (they were listed after hundreds of
@@ -41,6 +53,13 @@ All notable changes to Senthym. Newest first within each group.
 - Pause not sticking: Space was toggled twice when a clicked button kept keyboard focus; now consumed once.
 - Possible panic in title cleanup on non-English titles (ASCII-only lowercasing keeps byte positions valid).
 
+### Known limitations
+- Windows and macOS builds are made by CI and get less testing than Linux.
+- macOS app is not notarized (first launch: right-click, Open).
+- Follow is stored in Senthym only; it does not subscribe on your online account yet.
+- Importing a sign-in from an installed browser only finds Linux browsers; sign in through the app elsewhere.
+- One silent crash seen once on Linux was never reproduced (panics are logged to `crash.log`).
+- Linux packages are for x86_64 only.
 
 ## Earlier work in this project
 

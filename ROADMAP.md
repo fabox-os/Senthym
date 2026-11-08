@@ -9,6 +9,8 @@ Spotify desktop app.
 > Naming: the product, crate, binary (`senthym`), window title, app id and data folder
 > (`~/.local/share/senthym`) are all **Senthym**. The folders of the earlier name are moved over on the first start.
 
+**Version 1.0** (2026-11-08) — first release.
+
 Legend: ✅ done · 🔧 in progress · ⬜ planned
 
 ---
@@ -75,9 +77,17 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 - ⬜ Find and fix the silent crash reported on 2026-11-07 (no trace yet; crash log will show panics)
 - ⬜ Reduce per-frame video texture cost at 1080p
 
+## 6. Packaging
+
+- ✅ Linux: .deb, .rpm, AppImage, Flatpak
+- ✅ Windows: single .exe (fetches ffmpeg on first start)
+- ✅ macOS: universal .dmg (Apple silicon + Intel)
+- ⬜ Apple notarization, Windows code signing
+- ⬜ Linux ARM packages
+
 ## Next
 
-1. ⬜ Packaging (AppImage / .deb) with the Senthym name and icon
+1. ⬜ Test and polish the Windows and macOS builds
 2. ⬜ Per-song video quality memory
 3. ⬜ Follow sync to the YouTube account
 4. ⬜ Crash investigation and long-run performance tests
