@@ -1,0 +1,14 @@
+/target
+/shots
+*.bak
+*.part
+crash.log
+*.log
+.DS_Store
+# never commit sign-in files or keys
+*cookies*.txt
+auth.json
+library.json
+*.pem
+*.key
+.env

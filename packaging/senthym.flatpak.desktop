@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Senthym
+GenericName=Music Player
+Comment=Your Music. Your Freedom.
+Exec=senthym
+Icon=io.github.fabox_os.Senthym
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+StartupWMClass=senthym
+Keywords=music;player;lyrics;video;

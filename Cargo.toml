@@ -1,0 +1,74 @@
+[package]
+name = "senthym"
+version = "1.6.0"
+edition = "2021"
+description = "Senthym: a desktop music player for Linux, Windows and macOS. Your Music. Your Freedom."
+
+[[bin]]
+name = "senthym"
+path = "src/main.rs"
+
+[dependencies]
+eframe = { version = "0.28.1", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+egui = "0.28.1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+ureq = { version = "2.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+cpal = "0.15.3"
+symphonia = { version = "0.5.5", features = ["all"] }
+lofty = "0.22.4"
+dirs = "5"
+rand = "0.8"
+chrono = "0.4"
+urlencoding = "2"
+sha2 = "0.10"
+base64 = "0.22"
+sha1 = "0.10"
+rfd = { version = "0.14", default-features = false, features = ["xdg-portal", "async-std"] }
+
+[target.'cfg(windows)'.dependencies]
+zip = { version = "8", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[package.metadata.deb]
+name = "senthym"
+maintainer = "Senthym <noreply@users.noreply.github.com>"
+section = "sound"
+priority = "optional"
+depends = "$auto, ffmpeg"
+extended-description = "Senthym is a Spotify-style music player: search and stream, play your own files, synced lyrics, official music videos and crossfade."
+assets = [
+    ["target/release/senthym", "usr/bin/senthym", "755"],
+    ["packaging/senthym.desktop", "usr/share/applications/senthym.desktop", "644"],
+    ["assets/icon-48.png", "usr/share/icons/hicolor/48x48/apps/senthym.png", "644"],
+    ["assets/icon-128.png", "usr/share/icons/hicolor/128x128/apps/senthym.png", "644"],
+    ["assets/icon-256.png", "usr/share/icons/hicolor/256x256/apps/senthym.png", "644"],
+    ["assets/icon-512.png", "usr/share/icons/hicolor/512x512/apps/senthym.png", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "senthym"
+summary = "Senthym - Your Music. Your Freedom."
+assets = [
+    { source = "target/release/senthym", dest = "/usr/bin/senthym", mode = "755" },
+    { source = "packaging/senthym.desktop", dest = "/usr/share/applications/senthym.desktop", mode = "644" },
+    { source = "assets/icon-48.png", dest = "/usr/share/icons/hicolor/48x48/apps/senthym.png", mode = "644" },
+    { source = "assets/icon-128.png", dest = "/usr/share/icons/hicolor/128x128/apps/senthym.png", mode = "644" },
+    { source = "assets/icon-256.png", dest = "/usr/share/icons/hicolor/256x256/apps/senthym.png", mode = "644" },
+    { source = "assets/icon-512.png", dest = "/usr/share/icons/hicolor/512x512/apps/senthym.png", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+alsa-lib = "*"
+
+[profile.release]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

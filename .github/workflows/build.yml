@@ -1,0 +1,146 @@
+name: Build Senthym
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  linux:
+    name: Linux (deb, rpm, AppImage, Flatpak)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libasound2-dev libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev flatpak flatpak-builder fuse libfuse2 xz-utils
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
+      - run: cargo build --release
+      - name: Static ffmpeg (travels inside AppImage and Flatpak)
+        run: |
+          curl -L -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          mkdir ff && tar -xf ffmpeg.tar.xz -C ff --strip-components=1
+          cp ff/ffmpeg packaging/ffmpeg
+      - name: .deb
+        run: cargo deb --no-build -o Senthym-linux-amd64.deb
+      - name: .rpm
+        run: cargo generate-rpm -o Senthym-linux-x86_64.rpm
+      - name: AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps
+          cp target/release/senthym AppDir/usr/bin/
+          cp packaging/ffmpeg AppDir/usr/bin/
+          cp packaging/senthym.desktop AppDir/senthym.desktop
+          cp assets/icon-256.png AppDir/senthym.png
+          cp assets/icon-256.png AppDir/usr/share/icons/hicolor/256x256/apps/senthym.png
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/senthym" "$@"\n' > AppDir/AppRun
+          chmod +x AppDir/AppRun
+          curl -L -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir Senthym-linux-x86_64.AppImage
+      - name: Flatpak
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+          cd packaging
+          flatpak-builder --user --force-clean --repo=repo build-dir io.github.fabox_os.Senthym.yml
+          flatpak build-bundle repo ../Senthym-linux.flatpak io.github.fabox_os.Senthym
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Senthym-linux
+          path: |
+            Senthym-linux-amd64.deb
+            Senthym-linux-x86_64.rpm
+            Senthym-linux-x86_64.AppImage
+            Senthym-linux.flatpak
+
+  windows:
+    name: Windows (single .exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Senthym-windows
+          path: target/release/senthym.exe
+
+  macos:
+    name: macOS (universal app)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build both processors
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+      - name: Make the universal app
+        run: |
+          APP=Senthym.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          lipo -create -output "$APP/Contents/MacOS/senthym" \
+            target/aarch64-apple-darwin/release/senthym \
+            target/x86_64-apple-darwin/release/senthym
+          # Icon
+          mkdir Senthym.iconset
+          for s in 16 32 128 256 512; do
+            sips -z $s $s assets/icon-512.png --out Senthym.iconset/icon_${s}x${s}.png
+            sips -z $((s*2)) $((s*2)) assets/icon-512.png --out Senthym.iconset/icon_${s}x${s}@2x.png
+          done
+          iconutil -c icns Senthym.iconset -o "$APP/Contents/Resources/Senthym.icns"
+          # ffmpeg (decodes the picture) travels inside the app
+          curl -L -o ffmpeg.zip https://evermeet.cx/ffmpeg/getrelease/zip
+          unzip -o ffmpeg.zip -d "$APP/Contents/Resources"
+          chmod +x "$APP/Contents/Resources/ffmpeg"
+          cat > "$APP/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>Senthym</string>
+            <key>CFBundleDisplayName</key><string>Senthym</string>
+            <key>CFBundleIdentifier</key><string>app.senthym.player</string>
+            <key>CFBundleExecutable</key><string>senthym</string>
+            <key>CFBundleIconFile</key><string>Senthym</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.6.0</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
+          </dict></plist>
+          PLIST
+          codesign --force --deep -s - "$APP"
+          hdiutil create -volname Senthym -srcfolder "$APP" -ov -format UDZO Senthym-macos-universal.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Senthym-macos-universal
+          path: Senthym-macos-universal.dmg
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mv dist/senthym.exe dist/Senthym-windows.exe
+          gh release create "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --title "Senthym ${{ github.ref_name }}" --notes "Your Music. Your Freedom. Packages: .deb, .rpm, AppImage, Flatpak (Linux), .exe (Windows), universal .dmg (macOS)."

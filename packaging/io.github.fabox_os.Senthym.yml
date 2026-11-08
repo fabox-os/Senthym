@@ -1,0 +1,42 @@
+# Flatpak manifest. CI builds the program first and this packs the finished files.
+app-id: io.github.fabox_os.Senthym
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: senthym
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-music
+  - --talk-name=org.freedesktop.portal.Desktop
+modules:
+  - name: senthym
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 senthym /app/bin/senthym
+      - install -Dm755 ffmpeg /app/bin/ffmpeg
+      - install -Dm644 senthym.desktop /app/share/applications/io.github.fabox_os.Senthym.desktop
+      - install -Dm644 icon-48.png /app/share/icons/hicolor/48x48/apps/io.github.fabox_os.Senthym.png
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/io.github.fabox_os.Senthym.png
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/io.github.fabox_os.Senthym.png
+      - install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/io.github.fabox_os.Senthym.png
+    sources:
+      - type: file
+        path: ../target/release/senthym
+      - type: file
+        path: ffmpeg
+      - type: file
+        path: senthym.flatpak.desktop
+        dest-filename: senthym.desktop
+      - type: file
+        path: ../assets/icon-48.png
+      - type: file
+        path: ../assets/icon-128.png
+      - type: file
+        path: ../assets/icon-256.png
+      - type: file
+        path: ../assets/icon-512.png
