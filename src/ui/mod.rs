@@ -53,6 +53,7 @@ fn draw_inner(ctx: &egui::Context, app: &mut App) {
         }
         toasts(ctx, app);
     undo_toast(ctx, app);
+    update_notice(ctx, app);
         return;
     }
     sidebar(ctx, app);
@@ -1306,6 +1307,55 @@ fn dialogs(ctx: &egui::Context, app: &mut App) {
 }
 
 /// "Hidden in <playlist>. Undo" — a light pill with a clickable Undo, shown for a few seconds.
+/// A card in the bottom-right corner when a newer Senthym is out (until it is dismissed with "Later").
+fn update_notice(ctx: &egui::Context, app: &mut App) {
+    use crate::app::UpdateState;
+    let (title, sub, can_install) = match &app.update {
+        UpdateState::Available(r) if app.store.settings.update_dismissed != r.version => {
+            (format!("Senthym {} is available", r.version), "A new version is ready to download.".to_string(), true)
+        }
+        UpdateState::Downloading(r, got) => {
+            let total = r.asset.as_ref().map(|a| a.size).unwrap_or(0).max(1);
+            let pct = (got.load(std::sync::atomic::Ordering::Relaxed) * 100 / total).min(100);
+            (format!("Downloading Senthym {}", r.version), format!("{pct}%"), false)
+        }
+        UpdateState::Done(text) => ("Senthym update".to_string(), text.clone(), false),
+        _ => return,
+    };
+    let (mut install, mut later, mut close) = (false, false, false);
+    let is_done = matches!(app.update, UpdateState::Done(_));
+    egui::Area::new(egui::Id::new("update_notice")).order(egui::Order::Foreground).anchor(Align2::RIGHT_BOTTOM, vec2(-16.0, -100.0)).show(ctx, |ui| {
+        egui::Frame::none().fill(Color32::from_rgb(0x28, 0x28, 0x28)).rounding(10.0).inner_margin(egui::Margin::symmetric(16.0, 12.0)).show(ui, |ui| {
+            ui.set_max_width(300.0);
+            ui.label(egui::RichText::new(title).font(bold(15.0)).color(TEXT));
+            ui.label(egui::RichText::new(sub).size(13.0).color(SUB));
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if can_install {
+                    if ui.add(egui::Button::new(egui::RichText::new("Update").color(Color32::BLACK)).fill(ACCENT)).clicked() {
+                        install = true;
+                    }
+                    if ui.button("Later").clicked() {
+                        later = true;
+                    }
+                } else if is_done && ui.button("OK").clicked() {
+                    close = true;
+                }
+            });
+        });
+    });
+    if install {
+        app.actions.push(Action::DownloadUpdate);
+    }
+    if later {
+        app.actions.push(Action::DismissUpdate);
+    }
+    if close {
+        app.update = crate::app::UpdateState::UpToDate;
+    }
+    ctx.request_repaint_after(std::time::Duration::from_millis(250));
+}
+
 fn undo_toast(ctx: &egui::Context, app: &mut App) {
     let Some((pid, key, name, at)) = app.undo_hide.clone() else { return };
     if at.elapsed() > std::time::Duration::from_secs(7) {
@@ -1415,7 +1465,7 @@ fn welcome(ctx: &egui::Context, app: &mut App) {
             ui.allocate_ui_at_rect(right, |ui| {
                 ui.vertical(|ui| {
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new("No API key, no Premium").font(bold(20.0)).color(TEXT));
+                    ui.label(egui::RichText::new("Your Music. Your Freedom.").font(bold(20.0)).color(TEXT));
                     ui.add_space(8.0);
                     for line in [
                         "1. Sign in to music.youtube.com in your browser (once, as usual).",

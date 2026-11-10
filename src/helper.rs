@@ -349,6 +349,11 @@ fn attempt_direct(bin: &Path, page_url: &str, format: &str, cookies: bool, js: b
 /// wins, so a way that YouTube is refusing right now doesn't hold up the one that works; any further
 /// ways are tried one after another only if both fail.
 fn resolve_direct_fmt(bin: &Path, page_url: &str, format: &str) -> Result<(String, String), String> {
+    resolve_with(bin, page_url, format, attempt_direct)
+}
+
+/// Run one kind of lookup the quickest way that works: the two likeliest ways side by side, then the rest.
+fn resolve_with<T: Send + 'static>(bin: &Path, page_url: &str, format: &str, attempt: fn(&Path, &str, &str, bool, bool) -> Result<T, String>) -> Result<T, String> {
     let plan: Vec<(bool, bool)> = attempt_plan().into_iter().filter(|(_, js)| !*js || !js_runtimes().is_empty()).collect();
     let mut last = String::from("unknown error");
     let racing = plan.len().min(2);
@@ -357,7 +362,7 @@ fn resolve_direct_fmt(bin: &Path, page_url: &str, format: &str) -> Result<(Strin
         for &(cookies, js) in &plan[..racing] {
             let (tx, bin, url, fmt) = (tx.clone(), bin.to_path_buf(), page_url.to_string(), format.to_string());
             std::thread::spawn(move || {
-                let _ = tx.send(attempt_direct(&bin, &url, &fmt, cookies, js));
+                let _ = tx.send(attempt(&bin, &url, &fmt, cookies, js));
             });
         }
         drop(tx);
@@ -370,7 +375,7 @@ fn resolve_direct_fmt(bin: &Path, page_url: &str, format: &str) -> Result<(Strin
         }
     }
     for &(cookies, js) in plan.iter().skip(if racing >= 2 { racing } else { 0 }) {
-        match attempt_direct(bin, page_url, format, cookies, js) {
+        match attempt(bin, page_url, format, cookies, js) {
             Ok(r) => return Ok(r),
             Err(e) => last = e,
         }
@@ -474,6 +479,47 @@ fn download_parallel(url: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// The picture qualities offered, best first.
+pub const VIDEO_HEIGHTS: [u32; 5] = [1080, 720, 480, 360, 240];
+
+/// Every address a lookup printed, in order.
+fn attempt_lines(bin: &Path, page_url: &str, format: &str, cookies: bool, js: bool) -> Result<Vec<String>, String> {
+    let mut cmd = crate::sys::cmd(bin);
+    if js {
+        for rt in js_runtimes() {
+            cmd.args(["--js-runtimes", rt]);
+        }
+    }
+    let _login = if cookies { login() } else { None };
+    if let Some(l) = &_login {
+        cmd.args(&l.args);
+    }
+    let out = cmd
+        .args(["-q", "--no-warnings", "--no-playlist", "-f", format])
+        .args(["--print", "%(url)s", page_url])
+        .output()
+        .map_err(|e| format!("Couldn't start the Senthym streaming engine ({e})"))?;
+    let lines: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().filter(|l| l.starts_with("http")).map(String::from).collect();
+    if out.status.success() && !lines.is_empty() {
+        note_ok((cookies, js));
+        return Ok(lines);
+    }
+    let err = String::from_utf8_lossy(&out.stderr);
+    Err(err.lines().filter(|l| l.contains("ERROR")).last().unwrap_or("unknown error").replace("ERROR: ", ""))
+}
+
+/// The picture addresses of a video for every quality, from ONE lookup (it costs the same as asking
+/// for one), so changing quality later needs no lookup at all.
+pub fn video_urls(video_id: &str) -> Result<Vec<(u32, String)>, String> {
+    let bin = ensure()?;
+    let fmt = VIDEO_HEIGHTS.iter().map(|h| format!("bestvideo[height<={h}][vcodec^=avc1]/bestvideo[height<={h}]/worstvideo[height<=1080]")).collect::<Vec<_>>().join(",");
+    let lines = resolve_with(&bin, &format!("https://music.youtube.com/watch?v={video_id}"), &fmt, attempt_lines)?;
+    if lines.len() != VIDEO_HEIGHTS.len() {
+        return Err("unexpected answer for the picture addresses".into());
+    }
+    Ok(VIDEO_HEIGHTS.iter().copied().zip(lines).collect())
+}
+
 /// A direct address of a video-only stream (no sound) at most `height` pixels tall, for the music video.
 pub fn video_url(video_id: &str, height: u32) -> Result<String, String> {
     let bin = ensure()?;
@@ -499,6 +545,23 @@ fn fetch_fast(video_id: &str, quality: Quality) -> Result<PathBuf, String> {
     }
     prune_cache();
     Ok(dest)
+}
+
+/// The cached file, or the quick fetch only (no slow fallback).
+pub fn fetch_quick(video_id: &str, quality: Quality) -> Result<PathBuf, String> {
+    if let Some(p) = cached(video_id) {
+        if crate::audio::decode::is_playable(&p.to_string_lossy()) {
+            touch(&p);
+            return Ok(p);
+        }
+        let _ = std::fs::remove_file(&p);
+    }
+    fetch_fast(video_id, quality)
+}
+
+/// The full download (with its own retries and a helper update), used when the quick way failed.
+pub fn fetch_full(video_id: &str, quality: Quality) -> Result<PathBuf, String> {
+    fetch_target(&format!("https://music.youtube.com/watch?v={video_id}"), quality)
 }
 
 /// Make sure a song's audio is on disk (fetching it if needed) and return the file.
@@ -638,7 +701,7 @@ fn write_tags(path: &Path, t: &crate::model::Track) {
 pub fn ensure_ffmpeg() -> Result<(), String> {
     use std::io::{Cursor, Read};
     let dest = crate::store::data_dir().join("bin").join("ffmpeg.exe");
-    if dest.exists() || std::process::Command::new("ffmpeg").arg("-version").output().is_ok() {
+    if dest.exists() || crate::sys::cmd("ffmpeg").arg("-version").output().is_ok() {
         return Ok(());
     }
     let _ = std::fs::create_dir_all(dest.parent().unwrap());

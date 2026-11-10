@@ -705,6 +705,51 @@ pub fn settings(ui: &mut Ui, app: &mut App) {
         }
     });
 
+    section_title(ui, "Updates");
+    {
+        use crate::app::UpdateState;
+        let kind = app.update_kind.label();
+        let (status, busy): (String, bool) = match &app.update {
+            UpdateState::Idle => (format!("You have version {}. Installed as: {kind}.", crate::update::current()), false),
+            UpdateState::Checking => ("Looking for a new version…".into(), true),
+            UpdateState::UpToDate => (format!("Senthym {} is the newest version.", crate::update::current()), false),
+            UpdateState::Available(r) => (
+                match &r.asset {
+                    Some(a) => format!("Version {} is available ({:.0} MB, {kind}).", r.version, a.size as f64 / 1_048_576.0),
+                    None => format!("Version {} is available. Get it from the releases page.", r.version),
+                },
+                false,
+            ),
+            UpdateState::Downloading(r, got) => {
+                let total = r.asset.as_ref().map(|a| a.size).unwrap_or(0).max(1);
+                let pct = (got.load(std::sync::atomic::Ordering::Relaxed) * 100 / total).min(100);
+                (format!("Downloading version {}… {pct}%", r.version), true)
+            }
+            UpdateState::Done(text) => (text.clone(), false),
+            UpdateState::Failed(e) => (format!("Couldn't update: {e}"), false),
+        };
+        let available = matches!(app.update, UpdateState::Available(_));
+        let has_package = matches!(&app.update, UpdateState::Available(r) if r.asset.is_some());
+        settings_row(ui, "Senthym updates", &status, |ui| {
+            if busy {
+                ui.add(egui::Spinner::new().color(ACCENT));
+            } else if available {
+                if ui.button(if has_package { "Download and install" } else { "Open releases page" }).clicked() {
+                    app.actions.push(Action::DownloadUpdate);
+                }
+            } else if !matches!(app.update, UpdateState::Done(_)) && ui.button("Check for updates").clicked() {
+                app.actions.push(Action::CheckUpdate);
+            }
+        });
+        let mut check = app.store.settings.check_updates;
+        settings_row(ui, "Check for updates on start", "Asks GitHub for the newest release when Senthym starts and tells you when there is one. Nothing is installed without you pressing the button.", |ui| {
+            if ui.checkbox(&mut check, "").changed() {
+                app.store.settings.check_updates = check;
+                app.actions.push(Action::SaveSettings);
+            }
+        });
+    }
+
     section_title(ui, "Music source");
     settings_row(ui, "Senthym Music Library", "Search, albums, artists and playlists come from several online music sources, and songs are streamed by the built-in Senthym engine. No key or account needed.", |ui| {
         ui.label(RichText::new("Connected").color(ACCENT));

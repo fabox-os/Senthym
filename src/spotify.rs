@@ -440,7 +440,7 @@ const MARKERS: &[Marker] = &[
 ];
 
 /// Lowercase, drop "(feat. …)", keep letters/digits/spaces (`SongPlayer.normalizedForMatch`).
-fn normalized(s: &str) -> String {
+pub fn normalized(s: &str) -> String {
     let lower = s.to_lowercase();
     let no_feat = strip_feat(&lower);
     let cleaned: String = no_feat.chars().map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' }).collect();

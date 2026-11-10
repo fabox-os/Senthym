@@ -128,6 +128,10 @@ enum Msg {
     LocalScan(Vec<Track>),
     Helper(Option<String>),
     HelperUpdate(Result<String, String>),
+    /// A look for a newer Senthym release finished (true: the person asked for it).
+    UpdateChecked(Result<Option<crate::update::Release>, String>, bool),
+    /// The new version's package was downloaded and handed over: (what to tell the person).
+    UpdateDone(Result<crate::update::Outcome, String>),
     /// Play an album or playlist once its songs are known.
     PlayCollection(Item, bool, Result<Vec<Track>, String>),
     SpotifyLogin(Result<crate::spotify::User, String>),
@@ -141,6 +145,8 @@ enum Msg {
     /// Missing details (artist, album) of a song, looked up on YouTube Music.
     TrackInfo(String, Track),
     Nothing,
+    /// A short message to show (from a background task).
+    Note(String),
 }
 
 pub enum LyricsState {
@@ -219,6 +225,9 @@ pub enum Action {
     CopyText(String, String),
     Translate(bool),
     UpdateHelper,
+    CheckUpdate,
+    DownloadUpdate,
+    DismissUpdate,
     ClearCache,
     Toast(String),
     SaveSettings,
@@ -257,6 +266,21 @@ pub struct NextStream {
     height: u32,
     stream: Option<crate::video::VideoStream>,
     restart_at: Instant,
+    /// When the change was asked for, and how often its picture was started.
+    asked: Instant,
+    tries: u8,
+}
+
+/// Where the "update Senthym" flow is.
+#[derive(Clone)]
+pub enum UpdateState {
+    Idle,
+    Checking,
+    UpToDate,
+    Available(crate::update::Release),
+    Downloading(crate::update::Release, std::sync::Arc<std::sync::atomic::AtomicU64>),
+    Done(String),
+    Failed(String),
 }
 
 pub struct App {
@@ -308,6 +332,11 @@ pub struct App {
     video_urls: HashMap<(String, u32), (String, Instant)>,
     video_url_pending: HashSet<(String, u32)>,
     video_lagged: Option<(Instant, u32)>,
+    /// Last time the picture was looked after and the song position then; a long gap (the window was
+    /// hidden) or a jump in position (a seek) is noted, so it isn't mistaken for a slow connection.
+    video_tick: Instant,
+    video_last_pos: u64,
+    video_jump_at: Option<Instant>,
     browse_inflight: usize,
 
     // player
@@ -329,6 +358,10 @@ pub struct App {
     pub page_hints: HashMap<String, Item>,
     fade_target: Option<usize>,
     radio_loading: bool,
+    /// What the person is listening to lately; it shapes the songs autoplay adds.
+    pub taste: crate::taste::Taste,
+    /// Keys of the songs autoplay added (as opposed to the person's own choices).
+    auto_added: HashSet<String>,
     pub playing_from: String,
     /// The album / playlist / artist the queue was started from (for the highlighting in the library).
     pub playing_ctx: Option<Item>,
@@ -355,6 +388,8 @@ pub struct App {
     pub helper_version: Option<String>,
     pub helper_checked: bool,
     pub helper_busy: bool,
+    pub update: UpdateState,
+    pub update_kind: crate::update::Kind,
     pub local_scanning: bool,
     pub cache_bytes: u64,
     pub actions: Vec<Action>,
@@ -431,6 +466,9 @@ impl App {
             video_urls: HashMap::new(),
             video_url_pending: HashSet::new(),
             video_lagged: None,
+            video_tick: Instant::now(),
+            video_last_pos: 0,
+            video_jump_at: None,
             browse_inflight: 0,
             queue: vec![],
             unshuffled: None,
@@ -448,6 +486,8 @@ impl App {
             page_hints: HashMap::new(),
             fade_target: None,
             radio_loading: false,
+            taste: crate::taste::Taste::default(),
+            auto_added: HashSet::new(),
             playing_from: String::new(),
             playing_ctx: None,
             hide_scope: None,
@@ -465,6 +505,8 @@ impl App {
             helper_version: None,
             helper_checked: false,
             helper_busy: false,
+            update: UpdateState::Idle,
+            update_kind: crate::update::Kind::detect(),
             local_scanning: false,
             cache_bytes: 0,
             actions: vec![],
@@ -509,6 +551,8 @@ impl App {
             app.show_welcome = !app.store.welcome_dismissed;
         }
         app.spawn(|| Msg::DeezerHome(crate::providers::deezer_charts()));
+        // Pick the person's taste up where they left it, so autoplay carries on in their style.
+        app.taste = crate::taste::Taste::restore(app.store.taste_anchors.clone());
         // Bring back the last queue (paused where it stopped), like the original's PlaybackState.
         if !app.store.last_queue.is_empty() {
             app.queue = app.store.last_queue.clone();
@@ -819,6 +863,10 @@ impl App {
             }
             Msg::Helper(helper::find().map(|(_, v)| v))
         });
+        if self.store.settings.check_updates {
+            let kind = self.update_kind.clone();
+            self.spawn(move || Msg::UpdateChecked(crate::update::check(&kind), false));
+        }
     }
 
     // ------------------------------------------------------------ messages
@@ -844,9 +892,14 @@ impl App {
                     Ok(mut v) => {
                         let have: HashSet<String> = v.iter().map(|i| i.id.clone()).collect();
                         v.extend(early.into_iter().filter(|i| !have.contains(&i.id)));
+                        crate::fallback::dedupe_songs(&mut v);
                         Loadable::Ready(v)
                     }
-                    Err(_) if !early.is_empty() => Loadable::Ready(early),
+                    Err(_) if !early.is_empty() => {
+                        let mut early = early;
+                        crate::fallback::dedupe_songs(&mut early);
+                        Loadable::Ready(early)
+                    }
                     Err(e) => Loadable::Failed(e),
                 });
             }
@@ -859,8 +912,11 @@ impl App {
                     Some(Loadable::Ready(v)) => {
                         let have: HashSet<String> = v.iter().map(|i| i.id.clone()).collect();
                         v.extend(items.into_iter().filter(|i| !have.contains(&i.id)));
+                        crate::fallback::dedupe_songs(v);
                     }
                     Some(Loadable::Failed(_)) => {
+                        let mut items = items;
+                        crate::fallback::dedupe_songs(&mut items);
                         self.search_results.insert(key, Loadable::Ready(items));
                     }
                     _ => {
@@ -914,6 +970,8 @@ impl App {
                 self.video_url_pending.remove(&(vid.clone(), h));
                 match r {
                     Ok(url) => {
+                        // Read the file's index now, so its picture starts quicker when it is asked for.
+                        crate::video::warm(&url);
                         self.video_urls.insert((vid, h), (url, Instant::now()));
                         self.attach_video_addr();
                         self.attach_next();
@@ -923,8 +981,9 @@ impl App {
                             if sess.video_id == vid && sess.height == h && sess.stream.is_none() {
                                 sess.error = Some(e);
                             } else if sess.next.as_ref().map(|n| n.height == h).unwrap_or(false) {
-                                // The better quality isn't available: keep what is playing.
+                                // The other quality isn't available: keep what is playing.
                                 sess.next = None;
+                                eprintln!("[senthym] no {h}p address for this video: {e}");
                             }
                         }
                     }
@@ -982,7 +1041,21 @@ impl App {
                 match r {
                     Ok(tracks) => {
                         let known: HashSet<String> = self.queue.iter().map(|t| t.key()).collect();
-                        let fresh: Vec<Track> = tracks.into_iter().filter(|t| !known.contains(&t.key()) && !self.store.is_blocked(t)).collect();
+                        // No repeats: drop what is already in the queue — by id, and also as the same
+                        // recording under another upload or source (same title, artist and length) —
+                        // and what the list itself carries twice.
+                        let mut fresh: Vec<Track> = Vec::new();
+                        for t in tracks {
+                            if !known.contains(&t.key())
+                                && !self.store.is_blocked(&t)
+                                && !self.taste.put_aside(&t)
+                                && !self.queue.iter().chain(fresh.iter()).any(|q| crate::fallback::same_song(q, &t))
+                            {
+                                fresh.push(t);
+                            }
+                        }
+                        // These came from autoplay, not from the person: skipping them steers the taste.
+                        self.auto_added.extend(fresh.iter().map(|t| t.key()));
                         match purpose {
                             RadioPurpose::Start => {
                                 let mut q = vec![seed.clone()];
@@ -1103,6 +1176,38 @@ impl App {
                 self.helper_checked = true;
                 self.helper_version = v;
             }
+            Msg::UpdateChecked(r, manual) => match r {
+                Ok(Some(rel)) => {
+                    if !manual && self.store.settings.update_dismissed != rel.version {
+                        self.toast(format!("Senthym {} is available. Update it from Settings.", rel.version));
+                    }
+                    self.update = UpdateState::Available(rel);
+                }
+                Ok(None) => {
+                    self.update = UpdateState::UpToDate;
+                    if manual {
+                        self.toast("Senthym is up to date");
+                    }
+                }
+                Err(e) => {
+                    // A check at start-up that can't reach GitHub is silent; one the person asked for says why.
+                    self.update = if manual { UpdateState::Failed(e) } else { UpdateState::Idle };
+                }
+            },
+            Msg::UpdateDone(r) => match r {
+                Ok(out) => {
+                    self.update = UpdateState::Done(out.text);
+                    if let Some((program, args)) = out.relaunch {
+                        // Close Senthym (saving everything first) and open the new version a moment later.
+                        eprintln!("[senthym] updated; reopening {}", program.display());
+                        self.store.last_position_ms = self.status.position_ms;
+                        self.store.save();
+                        crate::sys::relaunch_later(&program, &args);
+                        self.ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                }
+                Err(e) => self.update = UpdateState::Failed(e),
+            },
             Msg::HelperUpdate(r) => {
                 self.helper_busy = false;
                 match r {
@@ -1154,6 +1259,7 @@ impl App {
                 });
             }
             Msg::Nothing => {}
+            Msg::Note(s) => self.toast(s),
             Msg::GoogleConnect(r) => {
                 self.google_busy = false;
                 match r {
@@ -1244,6 +1350,12 @@ impl App {
         let start = start_key.and_then(|k| q.iter().position(|t| t.key() == k)).unwrap_or(0);
         self.queue = q;
         self.unshuffled = None;
+        // A queue the person started themselves: nothing in it came from autoplay, and the song
+        // they picked is the newest sign of their taste.
+        self.auto_added.clear();
+        if let Some(t) = self.queue.get(start).cloned() {
+            self.note_choice(&t);
+        }
         // Never start on a song hidden in the playlist being played.
         let start = self.skip_hidden(start);
         if self.shuffle {
@@ -1382,13 +1494,28 @@ impl App {
     /// Look up (once) whether a song has an official music video.
     pub fn ensure_video_lookup(&mut self, t: &Track) {
         let key = t.key();
-        let Some(id) = t.video_id().map(String::from) else { return };
         if self.video_ids.contains_key(&key) || !self.video_lookups.insert(key.clone()) {
             return;
         }
+        // A YouTube song's own id, or a Spotify / Deezer song's known YouTube Music match: a video
+        // is looked up against whichever catalogue the song actually plays from, cross-checked the
+        // same way either way (the song's title and credited artists must both be confirmed).
+        let known = self.known_video_id(t);
+        let videos = self.store.settings.video_fallback;
         let tr = t.clone();
+        let tx = self.tx.clone();
         self.spawn(move || {
-            let v = ytm::video_id_for(&tr, &id);
+            let id = match known {
+                Some(id) => Some(id),
+                None => match crate::spotify::find_on_youtube(&tr, videos) {
+                    Ok(vid) => {
+                        let _ = tx.send(Msg::SpotifyMatch(tr.key(), vid.clone()));
+                        Some(vid)
+                    }
+                    Err(_) => None,
+                },
+            };
+            let v = id.and_then(|id| ytm::video_id_for(&tr, &id));
             Msg::VideoFound(key, v)
         });
     }
@@ -1437,15 +1564,46 @@ impl App {
         }
         self.video_url_pending.insert(key);
         let vid = vid.to_string();
+        let (tx, ctx) = (self.tx.clone(), self.ctx.clone());
         self.spawn(move || {
-            let r = helper::video_url(&vid, height);
-            Msg::VideoAddr(vid, height, r)
+            // One lookup gives every quality's address, so a later quality change needs none.
+            match helper::video_urls(&vid) {
+                Ok(all) => {
+                    let mut mine = None;
+                    for (h, url) in all {
+                        if h == height {
+                            mine = Some(url);
+                        } else {
+                            let _ = tx.send(Msg::VideoAddr(vid.clone(), h, Ok(url)));
+                        }
+                    }
+                    ctx.request_repaint();
+                    match mine {
+                        Some(url) => Msg::VideoAddr(vid, height, Ok(url)),
+                        None => {
+                            let r = helper::video_url(&vid, height);
+                            Msg::VideoAddr(vid, height, r)
+                        }
+                    }
+                }
+                Err(_) => {
+                    let r = helper::video_url(&vid, height);
+                    Msg::VideoAddr(vid, height, r)
+                }
+            }
         });
+    }
+
+    /// The position the picture follows: where playback will continue when the sound is still
+    /// loading (a switch to video, a restored session), else the playing position. Without this,
+    /// a picture started during the load would begin at 0 and have to be started over.
+    fn video_pos(&self) -> u64 {
+        self.pending_resume_ms.unwrap_or(self.status.position_ms)
     }
 
     /// Start the session's picture when its address is known (or ask for it).
     fn attach_video_addr(&mut self) {
-        let pos = self.status.position_ms;
+        let pos = self.video_pos();
         let Some(sess) = self.video.as_ref() else { return };
         if sess.stream.is_some() || sess.error.is_some() {
             return;
@@ -1484,12 +1642,12 @@ impl App {
             self.restart_video(height);
             return;
         }
-        sess.next = Some(NextStream { height, stream: None, restart_at: Instant::now() });
+        sess.next = Some(NextStream { height, stream: None, restart_at: Instant::now(), asked: Instant::now(), tries: 0 });
         self.attach_next();
     }
 
     fn attach_next(&mut self) {
-        let pos = self.status.position_ms;
+        let pos = self.video_pos();
         let Some(sess) = self.video.as_ref() else { return };
         let Some(n) = sess.next.as_ref() else { return };
         if n.stream.is_some() {
@@ -1504,10 +1662,16 @@ impl App {
                 if let Some(n) = self.video.as_mut().and_then(|s| s.next.as_mut()) {
                     n.stream = st;
                     n.restart_at = Instant::now();
+                    n.tries += 1;
                 }
             }
             None => self.request_video_url(&key.0, key.1),
         }
+    }
+
+    /// The quality a change in progress is going to, while its picture is being started.
+    pub fn video_switching_to(&self) -> Option<u32> {
+        self.video.as_ref().and_then(|s| s.next.as_ref()).map(|n| n.height)
     }
 
     /// Start the session's picture again at another height, keeping the last frame on screen meanwhile.
@@ -1526,6 +1690,31 @@ impl App {
 
     /// The music video's picture follows the audio position (called every frame).
     fn update_video(&mut self) {
+        // Was the picture left alone for a while (window hidden, so no frames were drawn), or did the
+        // song jump (a seek)? Then being behind says nothing about the connection.
+        let now = Instant::now();
+        let wall = now.duration_since(self.video_tick).as_millis() as u64;
+        let moved = self.video_pos().saturating_sub(self.video_last_pos);
+        if wall > 1500 || moved > wall + 1500 {
+            self.video_jump_at = Some(now);
+            if let Some(n) = self.video.as_mut().and_then(|s| s.next.as_mut()) {
+                n.tries = 0;
+            }
+        }
+        // A seek forwards while the picture is running: start the picture at the new position at once,
+        // keeping the current frame on screen meanwhile. Left to catch up on its own, the old frames
+        // would race across the screen (a fast-forward look) until the lag check restarted it seconds later.
+        if moved > wall + 1500 && wall <= 1500 {
+            let restart = self.video.as_ref().map(|s| s.stream.is_some() && s.restart_at.elapsed() > Duration::from_millis(250)).unwrap_or(false);
+            if restart {
+                let h = self.video.as_ref().map(|s| s.height).unwrap_or(0);
+                eprintln!("[senthym] seek forwards: video picked up at the new position ({h}p)");
+                self.restart_video(h);
+            }
+        }
+        self.video_tick = now;
+        self.video_last_pos = self.video_pos();
+        let jumped = self.video_jump_at.map(|t| t.elapsed() < Duration::from_secs(8)).unwrap_or(false);
         let cur_key = self.current.as_ref().map(|t| t.key());
         let prefer = self.store.settings.prefer_video;
         if !prefer {
@@ -1533,7 +1722,6 @@ impl App {
                 self.ensure_video_lookup(&t);
             }
         }
-        self.engine.set_leveling(prefer && self.video.is_some());
         if let Some(sess) = &self.video {
             // Gone when the song changed, the mode is off, or the song's video turned out to be another one.
             let still = cur_key.as_ref().and_then(|k| self.video_ids.get(k)).map(|v| v.as_deref() == Some(sess.video_id.as_str())).unwrap_or(false);
@@ -1562,10 +1750,11 @@ impl App {
                 }
             }
         }
-        let pos = self.status.position_ms;
+        let pos = self.video_pos();
         let ctx = self.ctx.clone();
         let playing = self.status.playing;
         let mut lag_to: Option<u32> = None;
+        let mut start_failed: Option<String> = None;
         if let Some(sess) = self.video.as_mut() {
             if let Some(stream) = sess.stream.as_mut() {
                 match stream.poll(pos) {
@@ -1599,21 +1788,108 @@ impl App {
                         if sess.restart_at.elapsed() > Duration::from_secs(3) {
                             let auto = self.store.settings.video_quality == 0;
                             let lower = [1080u32, 720, 480, 360, 240].iter().copied().find(|h| *h < sess.height).unwrap_or(240);
-                            lag_to = Some(if auto { lower } else { sess.height });
+                            lag_to = Some(if auto && !jumped { lower } else { sess.height });
                         }
                     }
-                    crate::video::Poll::Wait => {}
+                    crate::video::Poll::Wait => {
+                        if stream.ended {
+                            start_failed = stream.failure();
+                        }
+                    }
                 }
                 if playing {
                     ctx.request_repaint_after(Duration::from_millis(16));
                 }
             }
+            if start_failed.is_some() && sess.error.is_none() {
+                sess.error = start_failed.take();
+            }
+        }
+        // A quality change in progress: the new picture runs beside the one on screen and takes over
+        // with its first frame, so the picture never freezes or goes black while changing.
+        let mut retry_next = false;
+        let mut gave_up: Option<u32> = None;
+        let next_url = self.video.as_ref().and_then(|s| s.next.as_ref().map(|n| (s.video_id.clone(), n.height))).and_then(|k| self.video_urls.get(&k).map(|(u, _)| u.clone()));
+        if let Some(sess) = self.video.as_mut() {
+            let mut promote = false;
+            if let Some(n) = sess.next.as_mut() {
+                let stuck = match n.stream.as_mut() {
+                    Some(st) => match st.poll(pos) {
+                        crate::video::Poll::Frame(bytes) => {
+                            let img = egui::ColorImage::from_rgba_unmultiplied([st.w, st.h], &bytes);
+                            match sess.tex.as_mut() {
+                                Some(t) => t.set(img, egui::TextureOptions::LINEAR),
+                                None => sess.tex = Some(ctx.load_texture("music_video", img, egui::TextureOptions::LINEAR)),
+                            }
+                            promote = true;
+                            false
+                        }
+                        // The song was sought, or the new picture never got going: start it again here.
+                        crate::video::Poll::Restart | crate::video::Poll::Lag => true,
+                        // ffmpeg ended without a picture.
+                        crate::video::Poll::Wait => st.ended,
+                    },
+                    // Its address is being looked up (ask again if it doesn't come), or starting it failed.
+                    None => {
+                        if next_url.is_none() && n.restart_at.elapsed() > Duration::from_secs(3) {
+                            n.restart_at = Instant::now();
+                            retry_next = true;
+                        }
+                        next_url.is_some()
+                    }
+                };
+                if stuck && n.restart_at.elapsed() > Duration::from_secs(2) {
+                    if n.tries >= 3 {
+                        gave_up = Some(n.height);
+                    } else {
+                        n.stream = None;
+                        retry_next = true;
+                    }
+                }
+                // An address that never arrives must not block later changes.
+                if next_url.is_none() && n.asked.elapsed() > Duration::from_secs(40) {
+                    gave_up = Some(n.height);
+                }
+            }
+            if promote {
+                if let Some(n) = sess.next.take() {
+                    eprintln!("[senthym] video quality {}p -> {}p in {} ms", sess.height, n.height, n.asked.elapsed().as_millis());
+                    sess.stream = n.stream;
+                    sess.height = n.height;
+                    sess.url = next_url.clone();
+                    sess.error = None;
+                    sess.restart_at = Instant::now();
+                }
+            } else if gave_up.is_some() {
+                sess.next = None;
+            }
+            if sess.next.is_some() && playing {
+                ctx.request_repaint_after(Duration::from_millis(16));
+            }
+        }
+        if retry_next {
+            self.attach_next();
+        }
+        if let Some(h) = gave_up {
+            eprintln!("[senthym] video quality change to {h}p didn't start; keeping the current picture");
+            if self.store.settings.video_quality != 0 {
+                self.toast(format!("Couldn't switch the video to {h}p. Keeping the current quality."));
+            } else {
+                // Automatic: don't try to climb again for a while.
+                let cur = self.video.as_ref().map(|s| s.height).unwrap_or(h);
+                self.video_lagged = Some((Instant::now(), cur));
+            }
         }
         // The picture couldn't keep up: start it again at the audio position (one step lower when automatic),
         // and don't climb back up for a while.
         if let Some(h) = lag_to {
-            eprintln!("[senthym] video can't keep up: restarting at {h}p");
-            self.video_lagged = Some((Instant::now(), h));
+            if jumped {
+                // After a seek or a hidden window: just pick the picture up at the song's position.
+                eprintln!("[senthym] video picked up again at {h}p");
+            } else {
+                eprintln!("[senthym] video can't keep up: restarting at {h}p");
+                self.video_lagged = Some((Instant::now(), h));
+            }
             self.restart_video(h);
         }
     }
@@ -1724,60 +2000,55 @@ impl App {
             if let Some(id) = key.strip_prefix("yt:") {
                 let started = Instant::now();
                 let orig = id.to_string();
-                // With the video on, the sound of the official music video plays with its picture;
-                // otherwise (or when a song has no video) the audio version. A link chosen by hand is used as is.
-                // The video lookup and the audio version's download run side by side, so a song without a
-                // video starts as fast as before.
-                let mut video: Option<String> = None;
-                let mut atv: Option<(String, Result<PathBuf, String>)> = None;
-                if explicit {
-                    atv = Some((orig.clone(), helper::fetch(&orig, quality)));
-                } else if want_video {
-                    std::thread::scope(|sc| {
-                        let h = sc.spawn(|| {
-                            let v = ytm::video_id_for(&track, &orig);
-                            // Tell the app at once, so the picture can start loading while the sound downloads.
-                            let _ = tx.send(Msg::VideoFound(track.key(), v.clone()));
-                            ctx.request_repaint();
-                            v
-                        });
-                        let a = ytm::audio_id_for(&track, &orig);
-                        let ar = helper::fetch(&a, quality);
-                        atv = Some((a, ar));
-                        video = h.join().ok().flatten();
-                    });
+                // The song's own audio always starts at once — a song never waits on its video to
+                // play, whether it has one or not. With the video on, the video is looked up fully
+                // in the background and only attaches its picture once found (over this same
+                // audio); a link chosen by hand is used as is, with no video lookup at all.
+                let (atv_id, atv_res, other_source) = if explicit {
+                    (orig.clone(), helper::fetch(&orig, quality), None)
                 } else {
                     let a = ytm::audio_id_for(&track, &orig);
-                    let ar = helper::fetch(&a, quality);
-                    atv = Some((a, ar));
+                    let (ar, alt) = crate::fallback::fetch_song(&track, &a, quality);
+                    (a, ar, alt)
+                };
+                if !explicit && want_video {
+                    let (t2, o2, tx2, ctx2) = (track.clone(), orig.clone(), tx.clone(), ctx.clone());
+                    std::thread::spawn(move || {
+                        let v = ytm::video_id_for(&t2, &o2);
+                        let _ = tx2.send(Msg::VideoFound(t2.key(), v));
+                        ctx2.request_repaint();
+                    });
+                } else if !explicit {
+                    let _ = tx.send(Msg::VideoFound(track.key(), None));
                 }
-                let (atv_id, atv_res) = atv.unwrap();
-                match video {
-                    Some(v) if v != atv_id => {
-                        // Sound of the music video for playing; the audio version waits for "Switch to audio".
-                        let r = helper::fetch(&v, quality);
-                        eprintln!("[senthym] got video {v} in {} ms ({})", started.elapsed().as_millis(), if r.is_ok() { "ok" } else { "failed" });
-                        if r.is_ok() {
-                            let _ = tx.send(Msg::Resolved(key.clone(), purpose, r));
-                            let _ = tx.send(Msg::Resolved(format!("audio:{key}"), ResolvePurpose::Preload, atv_res));
-                            ctx.request_repaint();
-                            return Msg::Nothing;
-                        }
-                        // The video's sound couldn't be fetched: play the audio version, without the picture.
-                        let _ = tx.send(Msg::VideoFound(track.key(), None));
-                        return Msg::Resolved(key, purpose, atv_res);
-                    }
-                    _ => {
-                        eprintln!("[senthym] got {atv_id} in {} ms ({})", started.elapsed().as_millis(), if atv_res.is_ok() { "ok" } else { "failed" });
-                        return Msg::Resolved(key, purpose, atv_res);
+                eprintln!("[senthym] got {atv_id} in {} ms ({})", started.elapsed().as_millis(), if atv_res.is_ok() { "ok" } else { "failed" });
+                if let (Some(from), true) = (other_source, atv_res.is_ok()) {
+                    // Sound from another source never goes with this song's picture.
+                    let _ = tx.send(Msg::VideoFound(track.key(), None));
+                    if matches!(purpose, ResolvePurpose::Play(_)) {
+                        let _ = tx.send(Msg::Note(format!("“{}” wasn't available from its source. Playing it from {from}.", track.title)));
                     }
                 }
+                return Msg::Resolved(key, purpose, atv_res);
             }
             if let Source::Url(u) = &track.source {
-                return Msg::Resolved(key, purpose, helper::fetch_url(u, quality));
+                let mut r = helper::fetch_url(u, quality);
+                if r.is_err() {
+                    // The link won't play: the same song from YouTube Music instead.
+                    if let Ok(p) = crate::fallback::from_youtube(&track, quality) {
+                        if matches!(purpose, ResolvePurpose::Play(_)) {
+                            let _ = tx.send(Msg::Note(format!("“{}” wasn't available from its source. Playing it from YouTube Music.", track.title)));
+                        }
+                        r = Ok(p);
+                    }
+                }
+                return Msg::Resolved(key, purpose, r);
             }
             // A Spotify or Deezer song (SongPlayer.resolveYtPlaybackUnbounded): try up to 3
-            // accepted song matches, then up to 3 video matches when video fallback is on.
+            // accepted song matches, then up to 3 video matches when video fallback is on. The
+            // song always starts at once; with the video on, its match is cross-checked for a
+            // video fully in the background, the same verified way as for a YouTube song, and
+            // only attaches the picture once found — never waits for it.
             let match_key = track.key();
             let mut last_err = format!("couldn't find “{}” on YouTube Music", track.title);
             let rounds: &[bool] = if videos { &[false, true] } else { &[false] };
@@ -1792,12 +2063,29 @@ impl App {
                 for vid in ids {
                     match helper::fetch(&vid, quality) {
                         Ok(path) => {
-                            let _ = tx.send(Msg::SpotifyMatch(match_key.clone(), vid));
+                            let _ = tx.send(Msg::SpotifyMatch(match_key.clone(), vid.clone()));
+                            if want_video {
+                                let (t2, v2, tx2, ctx2) = (track.clone(), vid.clone(), tx.clone(), ctx.clone());
+                                std::thread::spawn(move || {
+                                    let v = ytm::video_id_for(&t2, &v2);
+                                    let _ = tx2.send(Msg::VideoFound(t2.key(), v));
+                                    ctx2.request_repaint();
+                                });
+                            } else {
+                                let _ = tx.send(Msg::VideoFound(match_key, None));
+                            }
                             return Msg::Resolved(key, purpose, Ok(path));
                         }
                         Err(e) => last_err = e,
                     }
                 }
+            }
+            // No YouTube Music match plays: the song's SoundCloud copy.
+            if let Ok(p) = crate::fallback::from_soundcloud(&track, quality) {
+                if matches!(purpose, ResolvePurpose::Play(_)) {
+                    let _ = tx.send(Msg::Note(format!("“{}” wasn't available from its source. Playing it from SoundCloud.", track.title)));
+                }
+                return Msg::Resolved(key, purpose, Ok(p));
             }
             Msg::Resolved(key, purpose, Err(last_err))
         });
@@ -1881,24 +2169,44 @@ impl App {
         self.spawn_radio(RadioPurpose::Start, t.clone());
     }
 
-    /// Similar songs from YouTube Music; a Spotify seed is found on YouTube Music first.
+    /// Similar songs, in the person's current taste: the radios around the playing song and
+    /// their last few own choices are fetched side by side and blended, newest taste leading
+    /// (see `taste::blend`). With one seed this is the plain radio of that song.
     fn spawn_radio(&self, purpose: RadioPurpose, seed: Track) {
-        let known = self.known_video_id(&seed);
+        // The playing song first, then the newest choices behind it — one per artist.
+        let seeds = self.taste.seeds(Some(&seed));
+        let known: Vec<Option<String>> = seeds.iter().map(|t| self.known_video_id(t)).collect();
         let videos = self.store.settings.video_fallback;
         let tx = self.tx.clone();
         self.spawn(move || {
-            let id = match known {
-                Some(id) => Ok(id),
-                None => {
-                    let r = crate::spotify::find_on_youtube(&seed, videos);
-                    if let (Ok(vid), Source::Spotify(_) | Source::Deezer(_)) = (&r, &seed.source) {
-                        let _ = tx.send(Msg::SpotifyMatch(seed.key(), vid.clone()));
-                    }
-                    r
-                }
-            };
-            let r = id.and_then(|id| ytm::radio(&id, None));
-            Msg::Radio(purpose, seed, r)
+            // All the radios at the same time, so a blend costs no more waiting than one radio.
+            let lists: Vec<Vec<Track>> = std::thread::scope(|sc| {
+                let hs: Vec<_> = seeds
+                    .iter()
+                    .zip(known)
+                    .map(|(t, id)| {
+                        let tx = tx.clone();
+                        sc.spawn(move || {
+                            let id = match id {
+                                Some(id) => Ok(id),
+                                None => {
+                                    let r = crate::spotify::find_on_youtube(t, videos);
+                                    if let (Ok(vid), Source::Spotify(_) | Source::Deezer(_)) = (&r, &t.source) {
+                                        let _ = tx.send(Msg::SpotifyMatch(t.key(), vid.clone()));
+                                    }
+                                    r
+                                }
+                            };
+                            id.and_then(|id| ytm::radio(&id, None))
+                        })
+                    })
+                    .collect();
+                hs.into_iter().map(|h| h.join().ok().and_then(|r| r.ok()).unwrap_or_default()).collect()
+            });
+            if lists.iter().all(|l| l.is_empty()) {
+                return Msg::Radio(purpose, seed, Err("couldn't load similar songs".into()));
+            }
+            Msg::Radio(purpose, seed, Ok(crate::taste::blend(&lists, 50)))
         });
     }
 
@@ -1922,7 +2230,24 @@ impl App {
         if self.status.fading {
             return; // PlayerViewModel.playNextSongs ignores skips during a crossfade.
         }
+        self.note_skip();
         if self.index + 1 >= self.queue.len() && self.store.settings.autoplay_radio {
+            self.continue_into_radio();
+            return;
+        }
+        // Several autoplay songs skipped in a row: this direction is wrong. Drop what autoplay
+        // queued ahead and ask for a fresh blend around what the person last chose.
+        if self.taste.streak >= crate::taste::STREAK_ENOUGH && self.store.settings.autoplay_radio && !self.radio_loading {
+            let cur = self.current.as_ref().map(|t| t.key());
+            let keep: Vec<Track> = self.queue.iter().take(self.index + 1).cloned().collect();
+            let dropped = self.queue.len() - keep.len();
+            if dropped > 0 {
+                self.queue = keep;
+                self.index = cur.and_then(|k| self.queue.iter().position(|t| t.key() == k)).unwrap_or(self.index.min(self.queue.len().saturating_sub(1)));
+                self.persist_queue();
+            }
+            self.taste.streak = 0;
+            eprintln!("[senthym] taste: autoplay songs skipped in a row; blending again ({dropped} dropped)");
             self.continue_into_radio();
             return;
         }
@@ -1969,6 +2294,28 @@ impl App {
         let i = if self.index == 0 { self.queue.len() - 1 } else { self.index - 1 };
         let i = self.skip_blocked(i, false);
         self.play_index(i);
+    }
+
+    /// The song being left was barely heard: tell the taste, so skipping a style steers away
+    /// from it. Only autoplay's own songs count towards the "wrong direction" streak.
+    fn note_skip(&mut self) {
+        let Some(t) = self.current.clone() else { return };
+        if self.status.position_ms >= crate::taste::SKIP_MS || !t.is_online() {
+            return;
+        }
+        let auto = self.auto_added.contains(&t.key());
+        self.taste.skipped(&t, auto);
+    }
+
+    /// A song the person chose themself: it leads the taste from now on, and it is saved so the
+    /// next run starts where they left off.
+    pub fn note_choice(&mut self, t: &Track) {
+        if !t.is_online() {
+            return;
+        }
+        self.taste.chose(t);
+        self.store.taste_anchors = self.taste.anchors().to_vec();
+        self.store.save();
     }
 
     fn continue_into_radio(&mut self) {
@@ -2259,7 +2606,14 @@ impl App {
             }
             Action::ToggleShuffle => self.toggle_shuffle(),
             Action::ToggleRepeat => self.repeat = !self.repeat,
-            Action::PlayQueueIndex(i) => self.play_index(i),
+            Action::PlayQueueIndex(i) => {
+                // Picking a song out of the queue is a choice too, even when autoplay queued it.
+                if let Some(t) = self.queue.get(i).cloned() {
+                    self.auto_added.remove(&t.key());
+                    self.note_choice(&t);
+                }
+                self.play_index(i)
+            }
             Action::AddQueue(t) => {
                 if self.queue.iter().any(|x| x.key() == t.key()) {
                     self.toast("Already in your queue");
@@ -2589,6 +2943,34 @@ impl App {
                 self.store.save();
             }
             Action::Translate(on) => self.show_translation = on,
+            Action::CheckUpdate => {
+                if !matches!(self.update, UpdateState::Checking | UpdateState::Downloading(..)) {
+                    self.update = UpdateState::Checking;
+                    let kind = self.update_kind.clone();
+                    self.spawn(move || Msg::UpdateChecked(crate::update::check(&kind), true));
+                }
+            }
+            Action::DownloadUpdate => {
+                if let UpdateState::Available(rel) = self.update.clone() {
+                    if rel.asset.is_none() {
+                        // No package for how this copy was installed: the releases page.
+                        crate::sys::open_url(&rel.page);
+                    } else {
+                        let got = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+                        self.update = UpdateState::Downloading(rel.clone(), got.clone());
+                        let kind = self.update_kind.clone();
+                        // Everything is saved before the update starts.
+                        self.store.save();
+                        self.spawn(move || Msg::UpdateDone(crate::update::download(&rel, got).and_then(|file| crate::update::install(&kind, &file))));
+                    }
+                }
+            }
+            Action::DismissUpdate => {
+                if let UpdateState::Available(rel) = &self.update {
+                    self.store.settings.update_dismissed = rel.version.clone();
+                    self.store.save();
+                }
+            }
             Action::UpdateHelper => {
                 if !self.helper_busy {
                     self.helper_busy = true;

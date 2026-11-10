@@ -102,20 +102,34 @@ fn title_map() -> &'static Mutex<HashMap<String, String>> {
     M.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Not an official music video: a lyric video, visualizer, audio upload, cover, edit...
+/// Artist lines of the videos seen in lists (lowercase), to check a video is by the song's artist.
+fn artist_map() -> &'static Mutex<HashMap<String, String>> {
+    static M: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    M.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Not a music video at all: a lyric video, visualizer, audio upload, cover, re-upload with subtitles...
 /// Words the song's own title has are allowed (a remix's official video is a remix video).
-fn is_bad_video_title(video_title: &str, song_title: &str) -> bool {
-    const BAD: [&str; 16] = [
+fn has_bad_words(video_title: &str, song_title: &str) -> bool {
+    const BAD: [&str; 20] = [
         "lyric", "lyrics", "visualizer", "visualiser", "official audio", "(audio)", "[audio]", "cover", "karaoke", "instrumental",
-        "8d", "slowed", "sped up", "nightcore", "reaction", "letra",
+        "8d", "slowed", "sped up", "nightcore", "reaction", "letra", "sub español", "subtitula", "legendado", "tradu",
     ];
     let v = video_title.to_lowercase();
     let own = song_title.to_lowercase();
-    let words = |t: &str| t.split(|c: char| !c.is_alphanumeric()).map(str::to_string).collect::<Vec<_>>();
-    let (vw, ow) = (words(&v), words(&own));
-    // A different cut of the song (acoustic, live, ...) is not this song's video.
-    const CUTS: [&str; 6] = ["acoustic", "live", "session", "sessions", "unplugged", "stripped"];
-    BAD.iter().any(|w| v.contains(w) && !own.contains(w)) || CUTS.iter().any(|w| vw.iter().any(|x| x == w) && !ow.iter().any(|x| x == w))
+    BAD.iter().any(|w| v.contains(w) && !own.contains(w))
+}
+
+/// The video is another recording of the song. Performance films (acoustic, live, sessions) are real
+/// clips and may stand in for the video when the song has no studio video (`allow_performance`);
+/// a remix or mashup never may.
+fn is_other_cut(video_title: &str, song_title: &str, allow_performance: bool) -> bool {
+    const PERFORMANCE: [&str; 6] = ["acoustic", "live", "session", "sessions", "unplugged", "stripped"];
+    const ALTERNATE: [&str; 3] = ["remix", "mashup", "megamix"];
+    let words = |t: &str| t.to_lowercase().split(|c: char| !c.is_alphanumeric()).map(str::to_string).collect::<Vec<_>>();
+    let (vw, ow) = (words(video_title), words(song_title));
+    let hit = |w: &str| vw.iter().any(|x| x == w) && !ow.iter().any(|x| x == w);
+    ALTERNATE.iter().any(|w| hit(w)) || (!allow_performance && PERFORMANCE.iter().any(|w| hit(w)))
 }
 
 /// The title says it is the official video ("(Official Video)", "Official Music Video", "Official 4K Video"...).
@@ -131,17 +145,24 @@ fn says_official_video(video_title: &str) -> bool {
     (v.contains("official") && (v.contains("video") || v.contains(" mv") || v.contains("clip"))) || FILMS.iter().any(|w| v.contains(w))
 }
 
-/// The title a video was uploaded with (YouTube's public oEmbed answer; no sign-in needed).
-fn real_title(id: &str) -> Option<String> {
-    static M: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+/// The title a video was uploaded with and the name of its channel (YouTube's public oEmbed
+/// answer; no sign-in needed). Both lowercase.
+fn real_meta(id: &str) -> Option<(String, String)> {
+    static M: OnceLock<Mutex<HashMap<String, Option<(String, String)>>>> = OnceLock::new();
     let m = M.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(v) = m.lock().unwrap().get(id) {
         return v.clone();
     }
     let url = format!("https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v={id}");
-    let got = agent().get(&url).timeout(Duration::from_secs(6)).call().ok().and_then(|r| r.into_json::<Value>().ok()).and_then(|v| v["title"].as_str().map(|s| s.to_lowercase()));
+    let got = agent().get(&url).timeout(Duration::from_secs(6)).call().ok().and_then(|r| r.into_json::<Value>().ok()).and_then(|v| {
+        v["title"].as_str().map(|t| (t.to_lowercase(), v["author_name"].as_str().unwrap_or("").to_lowercase()))
+    });
     m.lock().unwrap().insert(id.to_string(), got.clone());
     got
+}
+
+fn real_title(id: &str) -> Option<String> {
+    real_meta(id).map(|(t, _)| t)
 }
 
 fn video_map() -> &'static Mutex<HashMap<String, Option<String>>> {
@@ -153,57 +174,206 @@ fn clean_artist(a: &str) -> String {
     a.split(',').map(|x| x.trim().trim_end_matches("VEVO").trim().to_string()).filter(|x| !x.is_empty()).collect::<Vec<_>>().join(", ")
 }
 
-/// The official music video of a song, if it has one: the given id when it already is one, else the best
-/// matching official video found by search.
+/// A music video kind: an official music video (OMV) or a video published on a channel (UGC),
+/// as opposed to a song's plain audio version (ATV).
+fn is_video_kind(kind: Option<&str>) -> bool {
+    matches!(kind, Some("MUSIC_VIDEO_TYPE_OMV" | "MUSIC_VIDEO_TYPE_UGC" | "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC"))
+}
+
+/// Letters outside plain a-z folded to their closest ASCII spelling, so a name written with its
+/// own letters (an official "VÆB" upload) still matches a re-upload or search query that typed
+/// it in plain ASCII ("VAEB"), and the other way round. Only widens what counts as the same
+/// name; the artist and title must still both be confirmed, so this never admits a wrong video.
+fn fold(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'æ' | 'ӕ' => "ae".to_string(),
+            'œ' => "oe".to_string(),
+            'ø' => "o".to_string(),
+            'ß' => "ss".to_string(),
+            'þ' => "th".to_string(),
+            'ð' => "d".to_string(),
+            _ => c.to_string(),
+        })
+        .collect::<String>()
+        .chars()
+        .map(|c| {
+            // Strip the rest (accents, umlauts, rings...) to their base letter via decomposition.
+            unicode_base(c)
+        })
+        .collect()
+}
+
+/// A character's base letter: strip a combining accent by decomposing it (NFD) and keeping only
+/// the first, non-combining part. Plain ASCII letters pass through unchanged.
+fn unicode_base(c: char) -> char {
+    if c.is_ascii() {
+        return c;
+    }
+    // A small, direct table covers the common Latin letters without pulling in a Unicode crate.
+    const MAP: &[(&str, char)] = &[
+        ("àáâãäåā", 'a'),
+        ("èéêëē", 'e'),
+        ("ìíîïī", 'i'),
+        ("òóôõöøō", 'o'),
+        ("ùúûüū", 'u'),
+        ("ýÿ", 'y'),
+        ("ñ", 'n'),
+        ("ç", 'c'),
+        ("ś", 's'),
+        ("ź", 'z'),
+    ];
+    MAP.iter().find(|(from, _)| from.chars().any(|f| f == c)).map(|(_, to)| *to).unwrap_or(c)
+}
+
+/// True when one of the names in `artist` appears in `hay`, as words or run together the way
+/// channel names are ("KygoOfficialVEVO", "Sigrid UK"), letters folded so a different spelling
+/// of the same name ("VÆB" / "VAEB") still counts as the same.
+fn names_match(hay: &str, artist: &str) -> bool {
+    let hay = fold(&crate::spotify::normalized(hay));
+    let spaced = format!(" {hay} ");
+    let packed = hay.replace(' ', ""); // channel names run the words together
+    artist.split([',', '&']).any(|a| {
+        let n = fold(&crate::spotify::normalized(a));
+        match n.chars().count() {
+            0 => false,
+            1..=2 => spaced.contains(&format!(" {n} ")),
+            _ => spaced.contains(&format!(" {n} ")) || packed.contains(&n.replace(' ', "")),
+        }
+    })
+}
+
+/// True when one of the song's credited artists is named in what is known about the video: its
+/// artist line, its titles or its channel name. A video whose artist can't be confirmed is never
+/// used, so a song never gets another artist's video. The list data decides when it can; YouTube
+/// is only asked (once, remembered) when it can't, so the common case costs nothing.
+fn artist_matches(id: &str, artist: &str) -> bool {
+    let quick = format!(
+        "{} {}",
+        artist_map().lock().unwrap().get(id).cloned().unwrap_or_default(),
+        title_map().lock().unwrap().get(id).cloned().unwrap_or_default()
+    );
+    if names_match(&quick, artist) {
+        return true;
+    }
+    match real_meta(id) {
+        Some((rt, by)) => names_match(&format!("{rt} {by}"), artist),
+        None => false,
+    }
+}
+
+/// True when the video's title is this song: the song's title appears in the list or upload title
+/// (punctuation ignored, letters folded), or the titles match closely once an "Artist -" or
+/// "Artist:" prefix is dropped. The list title decides when it can; the upload title is only
+/// fetched when it can't.
+fn title_matches(id: &str, song_title: &str) -> bool {
+    let want = fold(&crate::spotify::normalized(&clean_title(song_title)));
+    if want.is_empty() {
+        return false;
+    }
+    let one = |v: &str| {
+        if v.is_empty() {
+            return false;
+        }
+        if fold(&crate::spotify::normalized(&clean_title(v))).contains(&want) {
+            return true;
+        }
+        let after = v.split_once(['-', ':']).map(|(_, a)| a.trim()).unwrap_or(v);
+        crate::spotify::bigram(&fold(&clean_title(after)), &fold(&clean_title(song_title))) >= 0.75
+    };
+    if one(&title_map().lock().unwrap().get(id).cloned().unwrap_or_default()) {
+        return true;
+    }
+    real_meta(id).map(|(rt, _)| one(&rt)).unwrap_or(false)
+}
+
+/// The official music video of a song, if it has one: the given id when it already is a video,
+/// else the best matching official video found by search, else an official performance film
+/// (live, acoustic, sessions) by the same artist. Every pick must name the song's artist in its
+/// artist line, upload title or channel name, and carry the song's title, so a wrong video can
+/// never be shown.
 pub fn video_id_for(t: &Track, id: &str) -> Option<String> {
     if let Some(v) = video_map().lock().unwrap().get(id) {
         return v.clone();
     }
-    let is_omv = |x: &str| kind_map().lock().unwrap().get(x).map(|k| k == "MUSIC_VIDEO_TYPE_OMV").unwrap_or(false);
+    let found = find_video_for(t, id);
+    video_map().lock().unwrap().insert(id.to_string(), found.clone());
+    found
+}
+
+fn find_video_for(t: &Track, id: &str) -> Option<String> {
+    let kind_of = |x: &str| kind_map().lock().unwrap().get(x).cloned();
     let title_of = |x: &str| title_map().lock().unwrap().get(x).cloned().unwrap_or_default();
-    // YouTube Music often shows a bare song title for a video, so the real upload title decides.
-    let good = |x: &str| {
-        if !is_omv(x) || is_bad_video_title(&title_of(x), &t.title) {
+    // Something marked a music video ("Official Video", or a performance film), on either the
+    // list title or the real upload title, and never a lyric / visualizer / audio upload.
+    let looks_like_video = |x: &str, song_title: &str| {
+        let lt = title_of(x);
+        if has_bad_words(&lt, song_title) {
             return false;
         }
-        if says_official_video(&title_of(x)) {
+        if says_official_video(&lt) {
             return true;
         }
+        // The list title doesn't decide: the real upload title does (fetched once, remembered).
         match real_title(x) {
-            Some(rt) => !is_bad_video_title(&rt, &t.title) && says_official_video(&rt),
+            Some(rt) => !has_bad_words(&rt, song_title) && says_official_video(&rt),
             None => false,
         }
     };
-    let found = if video_type(id).as_deref() == Some("MUSIC_VIDEO_TYPE_OMV") && good(id) {
-        Some(id.to_string())
-    } else {
-        let mut c = t.clone();
-        c.title = clean_title(&t.title);
-        c.artist = clean_artist(&t.artist);
-        // 1. The matching videos, keeping only official music videos; the one that says so comes first.
-        let mut picks: Vec<String> = crate::spotify::candidates(&c, true).unwrap_or_default().into_iter().filter(|x| good(x)).collect();
-        picks.sort_by_key(|x| {
-            let tt = title_of(x);
-            !(tt.contains("official") && tt.contains("video"))
-        });
-        let mut pick = picks.into_iter().next();
-        // 2. Nothing fitting: ask for "official video" explicitly and check the answers by hand.
-        if pick.is_none() {
-            let first_artist = c.artist.split(',').next().unwrap_or("").trim().to_lowercase();
-            let want = c.title.to_lowercase();
-            let q = format!("{} {} official video", c.title, c.artist.split(',').next().unwrap_or(""));
-            if let Ok(items) = search(&q, Some(FILTER_VIDEOS)) {
-                pick = items
-                    .into_iter()
-                    .filter(|i| i.track.is_some() && good(&i.id))
-                    .find(|i| i.title.to_lowercase().contains(&want) && (first_artist.is_empty() || i.subtitle.to_lowercase().contains(&first_artist)))
-                    .map(|i| i.id);
+
+    // The id being played is itself a music video (a plain song whose only upload is one, such
+    // as a lyric video with no separate audio track): shown only when it looks like a real video.
+    // `app.rs` bypasses this check instead, directly, when the person picked a video item
+    // themselves (a search result, a related video, a playlist row) — there the choice is
+    // explicit and any video-kind upload is shown as is, with no second-guessing.
+    if is_video_kind(video_type(id).as_deref()) && looks_like_video(id, &t.title) {
+        return Some(id.to_string());
+    }
+
+    let mut c = t.clone();
+    c.title = clean_title(&t.title);
+    c.artist = clean_artist(&t.artist);
+
+    // The pool: the scored matches, then an explicit "official video" search.
+    let mut pool: Vec<String> = crate::spotify::candidates(&c, true).unwrap_or_default();
+    let q = format!("{} {} official video", c.title, c.artist.split(',').next().unwrap_or(""));
+    if let Ok(items) = search(&q, Some(FILTER_VIDEOS)) {
+        for i in items {
+            if i.track.is_some() && !pool.contains(&i.id) {
+                pool.push(i.id);
             }
         }
-        pick
+    }
+    // Only music videos, label (OMV) videos first, and not too many of either kind: a check can
+    // cost one (remembered) question to YouTube, and the right video sits near the front of its
+    // kind when it exists. Capping before sorting would let one kind push the other out entirely.
+    pool.retain(|x| is_video_kind(kind_of(x).as_deref()));
+    let (mut omv, mut ugc): (Vec<String>, Vec<String>) = pool.into_iter().partition(|x| kind_of(x).as_deref() == Some("MUSIC_VIDEO_TYPE_OMV"));
+    omv.truncate(6);
+    ugc.truncate(6);
+    omv.extend(ugc);
+    let pool = omv;
+    // Cheap checks first; the later checks may ask YouTube for the upload title (once, remembered).
+    let verified = |x: &str, allow_performance: bool| {
+        !is_other_cut(&title_of(x), &c.title, allow_performance)
+            && looks_like_video(x, &c.title)
+            && title_matches(x, &c.title)
+            && artist_matches(x, &c.artist)
+            && real_title(x).map(|rt| !is_other_cut(&rt, &c.title, allow_performance)).unwrap_or(true)
     };
-    video_map().lock().unwrap().insert(id.to_string(), found.clone());
-    found
+    // 1. The song's own official studio music video.
+    let mut picks: Vec<&String> = pool.iter().filter(|x| kind_of(x).as_deref() == Some("MUSIC_VIDEO_TYPE_OMV") && verified(x, false)).collect();
+    picks.sort_by_key(|x| {
+        let tt = title_of(x);
+        !(tt.contains("official") && tt.contains("video"))
+    });
+    if let Some(p) = picks.first() {
+        return Some((*p).clone());
+    }
+    // 2. No studio video: an official performance film (live, acoustic, sessions) of the same
+    // song by the same artist; the pool already has official music videos first.
+    pool.iter().find(|x| verified(x, true)).cloned()
 }
 
 /// Title without "(Official Video)", "[Lyric Video]", "- Official Audio" and the like.
@@ -427,6 +597,9 @@ fn parse_row(r: &Value, fallback_album: Option<(&str, &str, Option<&str>)>) -> O
         if let Some(t) = find_str(r, "musicVideoType") {
             kind_map().lock().unwrap().insert(vid.clone(), t);
             title_map().lock().unwrap().insert(vid.clone(), title.to_lowercase());
+            if !parts.names.is_empty() {
+                artist_map().lock().unwrap().insert(vid.clone(), parts.names.to_lowercase());
+            }
         }
         let mut kind = parts.kind_hint.clone().unwrap_or(ItemKind::Song);
         if kind != ItemKind::Video && kind != ItemKind::Episode {
@@ -855,4 +1028,76 @@ pub fn video_id_from_link(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // These encode the video-matching rules, so a wrong video can never come back:
+    // a song must never show a lyric video, a visualizer, a re-upload or another artist's video,
+    // and official performance films must stay acceptable as a last resort.
+
+    #[test]
+    fn lyric_and_visualizer_uploads_are_bad() {
+        assert!(has_bad_words("kygo & sigrid - the feeling (lyrics)", "The Feeling"));
+        assert!(has_bad_words("the feeling (visualizer)", "The Feeling"));
+        assert!(has_bad_words("kygo - the feeling (official audio)", "The Feeling"));
+        assert!(has_bad_words("the feeling (sub español)", "The Feeling"));
+        assert!(!has_bad_words("kygo, sigrid - the feeling (official video)", "The Feeling"));
+        // Words of the song's own title stay allowed.
+        assert!(!has_bad_words("lyric pichler - my song (official video)", "My Song (feat. Lyric Pichler)".to_lowercase().as_str()));
+    }
+
+    #[test]
+    fn performance_films_allowed_only_as_films() {
+        let v = "kygo, sigrid - the feeling (live from the troll's tongue)";
+        assert!(is_other_cut(v, "the feeling", false)); // never as the studio video
+        assert!(!is_other_cut(v, "the feeling", true)); // fine as a performance film
+        assert!(says_official_video(v)); // a live film counts as a real clip
+    }
+
+    #[test]
+    fn remixes_never_cross_over() {
+        // A remix is never the plain song's video, film tier included...
+        assert!(is_other_cut("the feeling (oliver nelson remix)", "the feeling", true));
+        // ...but a remix song may use its own remix video.
+        assert!(!is_other_cut("the feeling (oliver nelson remix)", "the feeling (oliver nelson remix)", true));
+    }
+
+    #[test]
+    fn official_video_titles_recognized() {
+        assert!(says_official_video("kygo - it ain't me (official video)"));
+        assert!(says_official_video("artist - song (official music video)"));
+        assert!(!says_official_video("artist - song (official lyric video)"));
+        assert!(!says_official_video("artist - song (official audio)"));
+        assert!(!says_official_video("artist - song")); // a bare title is not trusted
+    }
+
+    #[test]
+    fn clean_title_strips_decorations() {
+        assert_eq!(clean_title("The Feeling (Official Video)"), "The Feeling");
+        assert_eq!(clean_title("The Feeling (Oliver Nelson Remix)"), "The Feeling (Oliver Nelson Remix)");
+        assert_eq!(clean_title("Song [Lyric Video] - Official"), "Song");
+    }
+
+    #[test]
+    fn fold_matches_different_spellings_of_the_same_name() {
+        // An ASCII re-upload ("VAEB") still counts as the official act's name ("VÆB"), and back.
+        assert_eq!(fold("VÆB"), fold("VAEB"));
+        assert_eq!(fold("Björk"), fold("Bjork"));
+        assert!(names_match("vaeb official", "VÆB"));
+        assert!(names_match("VÆB UK", "VAEB"));
+        // Different names still never match.
+        assert!(!names_match("some other band", "VÆB"));
+    }
+
+    #[test]
+    fn title_matches_colon_and_folded_titles() {
+        // "Artist: Title [tag]" (a colon, not a dash) still carries the song's title, letters folded.
+        title_map().lock().unwrap().insert("fold-test-colon".into(), "væb: róa [axmo remix] (audio)".into());
+        assert!(title_matches("fold-test-colon", "RÓA (AXMO Remix)"));
+        title_map().lock().unwrap().insert("fold-test-dash".into(), "vaeb - roa axmo remix".into());
+        assert!(title_matches("fold-test-dash", "RÓA (AXMO Remix)"));
+    }
 }

@@ -1,6 +1,6 @@
 # Senthym
 
-**Your Music. Your Freedom.**  ·  Version 1.0
+**Your Music. Your Freedom.**  ·  Version 1.1
 
 > **Platforms:** Senthym was designed and tested on **Linux (Ubuntu 26.04.1 LTS)**. It also works on
 > **Windows** and **macOS**, but those versions get less testing. If you find a bug on Windows or macOS,
@@ -60,7 +60,7 @@ below).
   what plays next, and gets it ready before you press play.
 - **Your own files.** Play music from your computer alongside the online library.
 - **Downloads.** Keep songs on your computer to play offline.
-- **Queue, shuffle, repeat and history**, plus automatic radio when your queue runs out.
+- **Queue, shuffle, repeat and history**, plus automatic radio when your queue runs out — it follows your taste as it shifts, blending songs from your last few choices (newest weighing most), the way Spotify's autoplay does.
 
 ### Music videos
 - Songs with an official music video play with the picture, in the side panel or in the full Now Playing
@@ -69,7 +69,8 @@ below).
   Your choice is remembered.
 - One click on **Switch to audio** (or **Switch to video**) changes version at the same moment of the song.
 - **Related music videos** appear over the bottom of the Now Playing view.
-- The sound level of video versions is evened out so quiet intros and loud choruses are comfortable.
+- The song keeps its own audio under the picture, so switching between video and audio doesn't change
+  the volume.
 
 ### Lyrics
 - Synced, line-by-line lyrics that follow the song, with translation to your language.
@@ -113,6 +114,20 @@ everything else works without it.
 
 ---
 
+## Updates
+
+Senthym tells you when a new release is out and updates itself from
+[the Releases page](https://github.com/fabox-os/Senthym/releases). Open **Settings → Updates** and press
+**Check for updates**, or use the notice that appears when you start the app (it can be turned off in the
+same place).
+
+It downloads the package that matches how you installed Senthym (Flatpak, AppImage, `.deb`, `.rpm`, Windows
+`.exe` or macOS `.dmg`), checks it against the checksum GitHub publishes, installs it, closes the app and
+opens the new version. Your library, playlists, sign-in and settings stay as they were: they live in your
+data folder, not in the program. Senthym keeps a copy of your library before every update.
+
+---
+
 ## Keyboard shortcuts
 
 | Keys | Action |
@@ -130,6 +145,16 @@ Ready-made packages are on the [Releases page](https://github.com/fabox-os/Senth
 
 | System | Package |
 | --- | --- |
+| Debian / Ubuntu (x86_64) | `Senthym-linux-amd64.deb` |
+| Debian / Ubuntu (ARM64) | `Senthym-linux-arm64.deb` |
+| Fedora / openSUSE (x86_64) | `Senthym-linux-x86_64.rpm` (install `ffmpeg` too) |
+| Fedora / openSUSE (ARM64) | `Senthym-linux-aarch64.rpm` (install `ffmpeg` too) |
+| Any Linux (x86_64 / ARM64) | `Senthym-linux-x86_64.AppImage` / `Senthym-linux-aarch64.AppImage` (ffmpeg included) |
+| Any Linux (x86_64 / ARM64) | `Senthym-linux-x86_64.flatpak` / `Senthym-linux-aarch64.flatpak` (ffmpeg included) |
+| Windows | `Senthym-windows.exe` |
+| macOS (Apple silicon + Intel) | `Senthym-macos-universal.dmg` |
+
+--- | --- |
 | Debian / Ubuntu | `Senthym-linux-amd64.deb` |
 | Fedora / openSUSE | `Senthym-linux-x86_64.rpm` (install `ffmpeg` too) |
 | Any Linux | `Senthym-linux-x86_64.AppImage` (ffmpeg included) |

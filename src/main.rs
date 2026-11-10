@@ -7,6 +7,7 @@
 
 mod app;
 mod audio;
+mod fallback;
 mod helper;
 mod images;
 mod local;
@@ -16,7 +17,9 @@ mod providers;
 mod spotify;
 mod store;
 mod sys;
+mod taste;
 mod ui;
+mod update;
 mod video;
 mod ytm;
 
@@ -28,6 +31,11 @@ struct Gui {
     frames: u32,
     requested: bool,
     wait_for_play: bool,
+    /// Test hooks: play this long before the screenshot, and quality changes at given positions.
+    play_wait_ms: u64,
+    /// Test hook: check for an update at once and install it without a click.
+    test_update: bool,
+    test_quality: Vec<(u64, u32)>,
     started: std::time::Instant,
 }
 
@@ -43,12 +51,35 @@ impl eframe::App for Gui {
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
         }
 
+        if self.test_update {
+            match &self.app.update {
+                app::UpdateState::Idle => self.app.actions.push(app::Action::CheckUpdate),
+                app::UpdateState::Available(_) => self.app.actions.push(app::Action::DownloadUpdate),
+                _ => {}
+            }
+        }
+        let pos = self.app.status.position_ms;
+        while self.test_quality.first().map(|(at, _)| *at <= pos).unwrap_or(false) {
+            let (_, h) = self.test_quality.remove(0);
+            if h >= 10_000 {
+                // Values from 10000 up are a position to seek to (ms), to test the picture after a seek.
+                eprintln!("[senthym] test: seeking to {h} ms at {pos} ms");
+                self.app.actions.push(app::Action::Seek(h as u64));
+            } else if h <= 1 {
+                // 0 / 1: switch to the audio / video version, to test the picture across the switch.
+                eprintln!("[senthym] test: switching to {} at {pos} ms", if h == 1 { "video" } else { "audio" });
+                self.app.actions.push(app::Action::SetVideoMode(h == 1));
+            } else {
+                eprintln!("[senthym] test: asking for {h}p at {pos} ms");
+                self.app.actions.push(app::Action::SetVideoHeight(h));
+            }
+        }
         if let Some(path) = self.screenshot.clone() {
             self.frames += 1;
             ctx.request_repaint();
             // Wait for the home feed (or 10 s), then let ~120 frames draw before the picture.
             let mut feed_ready = !matches!(self.app.home, app::Loadable::Loading);
-            if self.app.autoplay_query.is_some() || self.app.loading || self.app.test_seek_end || self.app.test_wait_fade || (self.wait_for_play && self.app.status.position_ms < 3000) {
+            if self.app.autoplay_query.is_some() || self.app.loading || self.app.test_seek_end || self.app.test_wait_fade || (self.wait_for_play && self.app.status.position_ms < self.play_wait_ms) {
                 feed_ready = false; // with --play, wait until the song has played a few seconds
             }
             let waited = self.started.elapsed() > std::time::Duration::from_secs(if self.wait_for_play { 120 } else { 10 });
@@ -112,6 +143,7 @@ fn install_crash_log() {
 
 fn main() -> eframe::Result<()> {
     install_crash_log();
+    sys::clean_old_update();
     let args: Vec<String> = std::env::args().collect();
     if let Some(f) = arg_value(&args, "--decode-test") {
         // Developer check: decode a whole file and report its length.
@@ -182,6 +214,103 @@ fn main() -> eframe::Result<()> {
         }
         return Ok(());
     }
+    if let Some(kind) = arg_value(&args, "--debug-update-check") {
+        // Developer check: look for a release as an older version (SENTHYM_FAKE_VERSION), for the package
+        // kind named (flatpak, appimage, deb, rpm, windows, macos), and download it (SENTHYM_UPDATE_DIR).
+        let k = match kind.as_str() {
+            "flatpak" => update::Kind::Flatpak,
+            "appimage" => update::Kind::AppImage,
+            "deb" => update::Kind::Deb,
+            "rpm" => update::Kind::Rpm,
+            "windows" => update::Kind::Windows,
+            "macos" => update::Kind::MacOs,
+            _ => update::Kind::detect(),
+        };
+        println!("installed as {k:?}, version {}", update::current());
+        match update::check(&k) {
+            Ok(Some(rel)) => {
+                println!("newer release {} -> {:?}", rel.version, rel.asset);
+                if args.iter().any(|a| a == "--download") {
+                    let got = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+                    let t = std::time::Instant::now();
+                    println!("download: {:?} in {} ms ({} bytes read)", update::download(&rel, got.clone()), t.elapsed().as_millis(), got.load(std::sync::atomic::Ordering::Relaxed));
+                }
+            }
+            Ok(None) => println!("up to date"),
+            Err(e) => println!("error: {e}"),
+        }
+        return Ok(());
+    }
+    if let Some(spec) = arg_value(&args, "--debug-fallback") {
+        // Developer check: "video id|title|artist|duration_ms" -> where the sound comes from when the id fails.
+        let p: Vec<&str> = spec.split('|').collect();
+        let t = model::Track {
+            source: model::Source::YouTube(p.first().unwrap_or(&"").to_string()),
+            title: p.get(1).unwrap_or(&"").to_string(),
+            artist: p.get(2).unwrap_or(&"").to_string(),
+            artist_id: None,
+            album: String::new(),
+            album_id: None,
+            duration_ms: p.get(3).and_then(|d| d.parse().ok()).unwrap_or(0),
+            thumb: None,
+        };
+        let at = std::time::Instant::now();
+        println!("soundcloud matches: {:?}", fallback::soundcloud_matches(&t));
+        println!("soundcloud alone: {:?}", fallback::from_soundcloud(&t, store::Quality::Normal));
+        let (r, alt) = fallback::fetch_song(&t, p.first().unwrap_or(&""), store::Quality::Normal);
+        println!("result: {r:?}, other source: {alt:?}, {} ms", at.elapsed().as_millis());
+        return Ok(());
+    }
+    if let Some(spec) = arg_value(&args, "--debug-taste") {
+        // Developer check: "song one|song two|..." (newest choice first) -> the blended autoplay.
+        let seeds: Vec<&str> = spec.split('|').filter(|s| !s.trim().is_empty()).collect();
+        let at = std::time::Instant::now();
+        let mut lists: Vec<Vec<model::Track>> = Vec::new();
+        for q in &seeds {
+            let found = ytm::search(q, Some(ytm::FILTER_SONGS)).ok().and_then(|v| v.into_iter().find_map(|i| i.track));
+            let Some(t) = found else {
+                println!("seed {q:?}: not found");
+                continue;
+            };
+            let list = t.video_id().and_then(|id| ytm::radio(id, None).ok()).unwrap_or_default();
+            println!("seed {:?} by {} -> {} similar songs", t.title, t.artist, list.len());
+            lists.push(list);
+        }
+        let out = taste::blend(&lists, 20);
+        println!("\nblended autoplay ({} songs, {} ms):", out.len(), at.elapsed().as_millis());
+        for (i, t) in out.iter().enumerate() {
+            println!("{:2}. {} — {}", i + 1, t.title, t.artist);
+        }
+        return Ok(());
+    }
+    if let Some(q) = arg_value(&args, "--debug-dedupe") {
+        // Developer check: a search with all sources, before and after removing repeated songs.
+        let (q, filter) = match q.strip_prefix("songs:") {
+            Some(rest) => (rest.to_string(), Some(ytm::FILTER_SONGS)),
+            None => (q, None),
+        };
+        let mut v = ytm::search(&q, filter).unwrap_or_default();
+        v.extend(providers::deezer_search(&q).unwrap_or_default());
+        v.extend(providers::soundcloud_search(&q).unwrap_or_default());
+        let before: Vec<String> = v.iter().filter(|i| i.kind == model::ItemKind::Song).map(|i| format!("{} | {} | {}", i.title, i.subtitle, i.track.as_ref().map(|t| t.duration_ms / 1000).unwrap_or(0))).collect();
+        fallback::dedupe_songs(&mut v);
+        let after: Vec<String> = v.iter().filter(|i| i.kind == model::ItemKind::Song).map(|i| format!("{} | {} | {}", i.title, i.subtitle, i.track.as_ref().map(|t| t.duration_ms / 1000).unwrap_or(0))).collect();
+        println!("songs before: {}, after: {}", before.len(), after.len());
+        for b in &before {
+            println!("{} {b}", if after.contains(b) { "keep" } else { "DROP" });
+        }
+        return Ok(());
+    }
+    if let Some(spec) = arg_value(&args, "--debug-loudness") {
+        // Developer check: "video-sound file|audio-version file" -> measured levels and the fixed gain.
+        let p: Vec<&str> = spec.split('|').collect();
+        let t = std::time::Instant::now();
+        let (v, r) = (p.first().copied().unwrap_or(""), p.get(1).copied().unwrap_or(""));
+        println!("video {:?} dB, reference {:?} dB", audio::loudness::measure(v), audio::loudness::measure(r));
+        let g = audio::loudness::match_gain(v, r);
+        println!("gain x{g:.3} ({:+.2} dB), measured in {} ms", 20.0 * g.log10(), t.elapsed().as_millis());
+        return Ok(());
+    }
     if let Some(spec) = arg_value(&args, "--debug-audio") {
         // Developer check: "video id|title|artist|duration_ms" → the id that would be played.
         let p: Vec<&str> = spec.split('|').collect();
@@ -219,7 +348,11 @@ fn main() -> eframe::Result<()> {
             duration_ms: p.get(3).and_then(|d| d.parse().ok()).unwrap_or(0),
             thumb: None,
         };
-        println!("match: {:?}", spotify::find_on_youtube(&t, true));
+        let m = spotify::find_on_youtube(&t, true);
+        println!("match: {m:?}");
+        if let Ok(id) = &m {
+            println!("video (cross-checked against Spotify's title/artist): {:?}", ytm::video_id_for(&t, id));
+        }
         let l = lyrics::fetch(&t.title, &t.artist, &t.album, t.duration_ms);
         println!("lyrics: {}", l.map(|l| format!("{} lines, synced {}", l.lines.len(), l.synced)).unwrap_or_else(|| "none".into()));
         return Ok(());
@@ -320,6 +453,12 @@ fn main() -> eframe::Result<()> {
                 frames: 0,
                 requested: false,
                 wait_for_play,
+                test_update: args.iter().any(|a| a == "--test-update"),
+                play_wait_ms: arg_value(&args, "--play-seconds").and_then(|v| v.parse::<u64>().ok()).map(|v| v * 1000).unwrap_or(3000),
+                // "--test-quality 8000:240,16000:1080": ask for a quality when the song reaches a position.
+                test_quality: arg_value(&args, "--test-quality")
+                    .map(|v| v.split(',').filter_map(|p| p.split_once(':')).filter_map(|(at, h)| Some((at.parse().ok()?, h.parse().ok()?))).collect())
+                    .unwrap_or_default(),
                 started: std::time::Instant::now(),
             }))
         }),

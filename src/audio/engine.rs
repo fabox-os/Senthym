@@ -35,6 +35,8 @@ struct Deck {
     duration_ms: u64,
     eof: bool,
     volume: f32,
+    /// Fixed loudness-matching gain for this file (1.0 = untouched); never changes while it plays.
+    gain: f32,
     filter: Biquad,
     seek_to: Option<u64>,
     error: Option<String>,
@@ -68,10 +70,24 @@ struct Mixer {
     master: f32,
     fade: Option<Fade>,
     fade_done: bool,
-    /// Loudness leveller for music-video sound (which is not mastered evenly): on/off, power envelope, gain.
-    level_on: bool,
-    level_env: f32,
-    level_gain: f32,
+}
+
+fn gains() -> &'static Mutex<std::collections::HashMap<String, f32>> {
+    static G: std::sync::OnceLock<Mutex<std::collections::HashMap<String, f32>>> = std::sync::OnceLock::new();
+    G.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Remember the fixed gain a file is played with (set before it is loaded). Currently unused:
+/// automatic video matching no longer swaps in the video's own sound (that fetch used to block
+/// the song's start), so nothing measures a gain to set — kept for the day that swap is made to
+/// happen in the background instead, without delaying playback.
+#[allow(dead_code)]
+pub fn set_path_gain(path: &str, gain: f32) {
+    gains().lock().unwrap().insert(path.to_string(), gain.clamp(0.25, 2.0));
+}
+
+fn path_gain(path: &str) -> f32 {
+    gains().lock().unwrap().get(path).copied().unwrap_or(1.0)
 }
 
 /// Keeps peaks from clipping without touching normal levels.
@@ -85,21 +101,6 @@ fn soft_limit(x: f32) -> f32 {
 }
 
 impl Mixer {
-    /// Evens out the long-term level of the mixed sound: loud stretches come down a little faster than
-    /// quiet ones are lifted (about 4.5 dB down, 3.5 dB up at most), and near-silence is left alone.
-    fn level(&mut self, l: f32, r: f32) -> (f32, f32) {
-        // Slow on purpose: it follows the song's overall level over seconds, so beats and single
-        // loud hits never make the volume pump up and down.
-        let rate = self.rate as f32;
-        let p = (l * l + r * r) * 0.5;
-        self.level_env += (p - self.level_env) * (1.0 / (3.0 * rate));
-        let rms = self.level_env.sqrt();
-        let want = if rms < 0.004 { self.level_gain } else { (0.16 / rms).clamp(0.6, 1.5) };
-        let k = if want < self.level_gain { 1.0 / (0.8 * rate) } else { 1.0 / (2.5 * rate) };
-        self.level_gain += (want - self.level_gain) * k;
-        (soft_limit(l * self.level_gain), soft_limit(r * self.level_gain))
-    }
-
     fn render(&mut self, out: &mut [f32]) {
         // `out` is interleaved stereo.
         for frame in out.chunks_mut(2) {
@@ -115,13 +116,18 @@ impl Mixer {
                         let mut b = d.buf.pop_front().unwrap_or(0.0);
                         d.frames += 1;
                         d.filter.process(&mut a, &mut b);
+                        if d.gain != 1.0 {
+                            a *= d.gain;
+                            b *= d.gain;
+                            if d.gain > 1.0 {
+                                a = soft_limit(a);
+                                b = soft_limit(b);
+                            }
+                        }
                         l += a * d.volume;
                         r += b * d.volume;
                     }
                 }
-            }
-            if self.level_on {
-                (l, r) = self.level(l, r);
             }
             let m = self.master;
             frame[0] = (l * m).clamp(-1.0, 1.0);
@@ -218,9 +224,6 @@ impl Engine {
             master: 1.0,
             fade: None,
             fade_done: false,
-            level_on: false,
-            level_env: 0.02,
-            level_gain: 1.0,
         }));
         let mut device_name = "No sound device".to_string();
         let mut holder = None;
@@ -263,6 +266,7 @@ impl Engine {
                 duration_ms: duration_hint,
                 eof: false,
                 volume,
+                gain: path_gain(&path),
                 filter: Biquad::new(rate),
                 seek_to: None,
                 error: None,
@@ -417,16 +421,6 @@ impl Engine {
             d.base_ms = ms;
             d.frames = 0;
             d.eof = false;
-        }
-    }
-
-    /// Turn the loudness leveller on or off (on for music-video sound).
-    pub fn set_leveling(&self, on: bool) {
-        let mut m = self.mixer.lock().unwrap();
-        if m.level_on != on {
-            m.level_on = on;
-            m.level_env = 0.02;
-            m.level_gain = 1.0;
         }
     }
 

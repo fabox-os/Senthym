@@ -101,7 +101,11 @@ fn quality_menu(ui: &mut Ui, app: &mut App) {
     ui.set_min_width(250.0);
     let cur = app.store.settings.video_quality;
     let eff = app.video.as_ref().map(|v| v.height).unwrap_or(0);
-    let head = if eff > 0 { format!("Video quality • {eff}p") } else { "Video quality".to_string() };
+    let head = match (eff, app.video_switching_to()) {
+        (e, Some(to)) if e > 0 => format!("Video quality • {e}p → {to}p…"),
+        (e, _) if e > 0 => format!("Video quality • {e}p"),
+        _ => "Video quality".to_string(),
+    };
     ui.label(egui::RichText::new(head).font(bold(12.0)).color(TEXT));
     ui.add_space(6.0);
     let rows: [(u32, &str, Option<&str>); 6] = [

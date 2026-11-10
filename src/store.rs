@@ -65,6 +65,10 @@ pub struct Settings {
     pub library_grid: bool,
     pub lyric_translate_lang: String,
     pub autoplay_radio: bool,
+    /// Look for a newer Senthym release on GitHub when the app starts.
+    pub check_updates: bool,
+    /// The release version whose "new version" notice was dismissed with "Later".
+    pub update_dismissed: String,
     /// Browser whose YouTube sign-in the streaming helper may use ("" = none).
     pub youtube_browser: String,
     pub volume: f32,
@@ -91,6 +95,8 @@ impl Default for Settings {
             library_grid: false,
             lyric_translate_lang: String::new(),
             autoplay_radio: true,
+            check_updates: true,
+            update_dismissed: String::new(),
             youtube_browser: String::new(),
             volume: 0.8,
             download_dir: music.join("Senthym").to_string_lossy().into_owned(),
@@ -175,6 +181,8 @@ pub struct Store {
     pub last_queue: Vec<Track>,
     pub last_index: usize,
     pub last_position_ms: u64,
+    /// The last few songs the person chose themselves, newest first: what autoplay follows.
+    pub taste_anchors: Vec<Track>,
 }
 
 /// `SENTHYM_HOME` keeps everything in one folder instead (used for testing).

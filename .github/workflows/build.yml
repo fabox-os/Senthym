@@ -7,12 +7,26 @@ on:
 
 jobs:
   linux:
-    name: Linux (deb, rpm, AppImage, Flatpak)
-    runs-on: ubuntu-22.04
+    name: Linux ${{ matrix.arch }} (deb, rpm, AppImage, Flatpak)
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            deb: amd64
+            runner: ubuntu-22.04
+            ffmpeg: linux64
+          - arch: aarch64
+            deb: arm64
+            runner: ubuntu-22.04-arm
+            ffmpeg: linuxarm64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.arch }}
       - name: Build tools
         run: |
           sudo apt-get update
@@ -23,13 +37,13 @@ jobs:
       - run: cargo build --release
       - name: Static ffmpeg (travels inside AppImage and Flatpak)
         run: |
-          curl -fL -o ffmpeg.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-lgpl.tar.xz
+          curl -fL -o ffmpeg.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-${{ matrix.ffmpeg }}-lgpl.tar.xz
           mkdir ff && tar -xf ffmpeg.tar.xz -C ff --strip-components=1
           cp ff/bin/ffmpeg packaging/ffmpeg
       - name: .deb
-        run: cargo deb --no-build -o Senthym-linux-amd64.deb
+        run: cargo deb --no-build -o Senthym-linux-${{ matrix.deb }}.deb
       - name: .rpm
-        run: cargo generate-rpm -o Senthym-linux-x86_64.rpm
+        run: cargo generate-rpm -o Senthym-linux-${{ matrix.arch }}.rpm
       - name: AppImage
         run: |
           mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps
@@ -40,24 +54,24 @@ jobs:
           cp assets/icon-256.png AppDir/usr/share/icons/hicolor/256x256/apps/senthym.png
           printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/senthym" "$@"\n' > AppDir/AppRun
           chmod +x AppDir/AppRun
-          curl -L -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          curl -fL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage
           chmod +x appimagetool
-          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir Senthym-linux-x86_64.AppImage
+          ARCH=${{ matrix.arch }} ./appimagetool --appimage-extract-and-run AppDir Senthym-linux-${{ matrix.arch }}.AppImage
       - name: Flatpak
         run: |
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
           cd packaging
           flatpak-builder --user --force-clean --disable-rofiles-fuse --repo=repo build-dir io.github.fabox_os.Senthym.yml
-          flatpak build-bundle repo ../Senthym-linux.flatpak io.github.fabox_os.Senthym
+          flatpak build-bundle repo ../Senthym-linux-${{ matrix.arch }}.flatpak io.github.fabox_os.Senthym
       - uses: actions/upload-artifact@v4
         with:
-          name: Senthym-linux
+          name: Senthym-linux-${{ matrix.arch }}
           path: |
-            Senthym-linux-amd64.deb
-            Senthym-linux-x86_64.rpm
-            Senthym-linux-x86_64.AppImage
-            Senthym-linux.flatpak
+            Senthym-linux-${{ matrix.deb }}.deb
+            Senthym-linux-${{ matrix.arch }}.rpm
+            Senthym-linux-${{ matrix.arch }}.AppImage
+            Senthym-linux-${{ matrix.arch }}.flatpak
 
   windows:
     name: Windows (single .exe)
@@ -115,7 +129,7 @@ jobs:
             <key>CFBundleExecutable</key><string>senthym</string>
             <key>CFBundleIconFile</key><string>Senthym</string>
             <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleShortVersionString</key><string>1.0.0</string>
+            <key>CFBundleShortVersionString</key><string>1.1.0</string>
             <key>LSMinimumSystemVersion</key><string>11.0</string>
             <key>NSHighResolutionCapable</key><true/>
             <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
