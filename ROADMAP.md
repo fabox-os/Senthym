@@ -114,8 +114,9 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 - ✅ Linux ARM64 packages (.deb, .rpm, AppImage, Flatpak) next to x86_64
 - ✅ Update check and one-click update from GitHub releases (Settings and a notice card), keeping the library and sign-in
 - ⬜ Update from inside a Flatpak without the host-access permission (today: through `flatpak-spawn`, else the system installer)
-- ⬜ Test the Windows, macOS, .deb, .rpm and Flatpak update steps on real installs
-- ⬜ Try the new browser detection, sign-in and first-run engine setup on real Windows 10 / 11 and macOS machines
+- ✅ In-app update tried on real Windows and Linux machines
+- ⬜ Test the macOS update step on a real install
+- ⬜ Try the new browser detection, sign-in and first-run engine setup on a real macOS machine (Windows 10 is tested)
 
 ## Next
 
