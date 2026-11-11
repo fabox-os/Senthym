@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Senthym — Your Music. Your Freedom.</title>
+<meta name="description" content="Senthym is a Spotify-style music player for Linux, Windows and macOS, written in Rust. Stream from YouTube Music, Deezer and SoundCloud with no ads, no subscription and no API keys. Free and open source, GPL-3.0.">
+<meta property="og:title" content="Senthym — Your Music. Your Freedom.">
+<meta property="og:description" content="A Spotify-style music player for Linux, Windows and macOS, written in Rust. No ads, no subscription, no API keys.">
+<meta property="og:image" content="https://fabox-os.github.io/Senthym/screenshots/home-and-video.webp">
+<meta name="theme-color" content="#05080c">
+<link rel="icon" href="logo.png">
+<style>
+:root{color-scheme:dark;--bg:#05080c;--panel:#0b1118;--line:#18232e;--text:#eaf4fb;--dim:#8fa3b3;--accent:#89CFF0;--accent2:#b4e3fb;--glow:#38bdf8;--deep:#1e88e5;--green:#4fd1a5}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+nav{position:sticky;top:0;z-index:10;background:rgba(5,8,12,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:22px;height:58px}
+.logo{font-weight:700;display:flex;gap:8px;align-items:center;margin-right:auto}
+.logo img{border-radius:7px}
+.hero-logo{width:128px;height:128px;border-radius:28px;background:#000;box-shadow:0 10px 60px rgba(56,189,248,.4)}
+nav a.l{color:var(--dim);font-size:14px}nav a.l:hover{color:var(--text)}
+.btn{display:inline-flex;gap:8px;align-items:center;padding:10px 18px;border-radius:9px;font-weight:600;font-size:15px;border:1px solid var(--line);background:var(--panel)}
+.btn.p{background:var(--accent);border-color:var(--accent);color:#04121c}.btn.p:hover{background:var(--accent2)}
+.btn:hover{border-color:#2a3b4a}
+.hero{text-align:center;padding:84px 0 40px;background:radial-gradient(ellipse at 50% 0,#0b2a40 0,transparent 62%)}
+.badge{display:inline-flex;gap:10px;align-items:center;font-size:13px;color:var(--dim);border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 14px}
+.badge b{background:#0e2a3d;color:var(--accent);padding:1px 8px;border-radius:5px;font-size:11px;letter-spacing:.06em}
+h1{font-size:clamp(44px,8vw,84px);line-height:1.02;margin:26px 0 20px;letter-spacing:-.03em}
+h1 span{display:block;background:linear-gradient(90deg,#b4e3fb,#38bdf8 55%,#1e88e5);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{max-width:660px;margin:0 auto 30px;color:var(--dim);font-size:18px}.lead b{color:var(--text)}
+.eq{display:flex;gap:4px;justify-content:center;align-items:center;height:34px;margin:0 0 6px}
+.eq i{display:block;width:3px;border-radius:2px;background:linear-gradient(var(--accent2),var(--deep));height:8px;animation:eq 1.2s ease-in-out infinite}
+.eq i:nth-child(3n){animation-delay:-.4s}.eq i:nth-child(3n+1){animation-delay:-.8s}.eq i:nth-child(4n){animation-duration:1.6s}
+@keyframes eq{0%,100%{height:6px}50%{height:30px}}
+@media(prefers-reduced-motion:reduce){.eq i{animation:none;height:16px}}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.chips{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;margin:26px 0 0;color:var(--dim);font-size:13px}
+.chips span:before{content:"• ";color:var(--accent)}
+.shot{margin:48px auto 0;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 30px 80px rgba(56,189,248,.16)}
+.shot img{display:block;width:100%;height:auto}
+section{padding:80px 0;border-top:1px solid var(--line)}
+h2{font-size:clamp(28px,4vw,40px);margin:0 0 10px;letter-spacing:-.02em}
+.sub{color:var(--dim);max-width:660px;margin:0 0 36px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--dim);font-size:15px}
+.card em{font-style:normal;color:var(--accent);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.two img{width:100%;border-radius:12px;border:1px solid var(--line);display:block}
+.cap{color:var(--dim);font-size:14px;margin:8px 0 0;text-align:center}
+.dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+code{background:#101a23;border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:14px}
+pre{background:#080d13;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;font-size:13px;color:#cfeafb;margin:0;white-space:pre-wrap;word-break:break-word;scrollbar-color:#2a3b4a transparent}
+.dc{display:flex;flex-direction:column;gap:12px}.dc .row{display:flex;gap:10px;flex-wrap:wrap}
+.warn{max-width:760px;margin:26px auto 0;padding:14px 18px;border:1px solid #1d3a4d;background:#08141c;border-radius:10px;color:#bfe3f6;text-align:left;font-size:14px}
+.steps{counter-reset:s;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.steps .card{counter-increment:s;position:relative;padding-top:46px}
+.steps .card:before{content:counter(s);position:absolute;top:14px;left:20px;width:24px;height:24px;border-radius:50%;background:#0e2a3d;color:var(--accent);font-weight:700;font-size:13px;display:grid;place-items:center}
+.lim{max-width:760px;margin:0 0 24px;padding:0;list-style:none}
+.lim li{padding:6px 0 6px 28px;position:relative;color:var(--dim);font-size:15px}
+.lim li:before{content:"✗";position:absolute;left:0;color:#ff6b6b;font-weight:700}
+.eyebrow{color:var(--accent);letter-spacing:.2em;font-size:12px;margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.big{font-size:clamp(34px,5vw,56px)!important;margin-bottom:12px!important}
+.ic{width:22px;height:22px;flex:none;vertical-align:-4px;margin-right:10px}
+.card h3{display:flex;align-items:center}
+.hot{border-color:#2c5f7c;box-shadow:0 0 0 1px rgba(137,207,240,.15) inset}
+.two-btn{display:grid;grid-template-columns:1fr 1fr;gap:10px}.two-btn .btn,.one-btn .btn{justify-content:center}
+.mini{font-size:12.5px;color:var(--dim);line-height:1.9}.mini a{color:var(--accent);text-decoration:none}.mini a:hover{text-decoration:underline}
+pre .d{color:var(--accent)}
+.dc{justify-content:flex-start}.dc pre{margin-top:auto}
+.warn{display:flex;gap:12px;align-items:flex-start}.warn .ic{margin:2px 0 0;color:var(--accent)}.warn a{color:var(--accent);text-decoration:underline}
+footer{border-top:1px solid var(--line);padding:34px 0;color:var(--dim);font-size:13px}
+footer p{margin:6px 0;max-width:780px}.frow{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}.flinks{display:flex;gap:22px;flex-wrap:wrap}.flinks a:hover{color:var(--text)}.fine{margin-top:22px!important;font-size:12px;opacity:.8}
+.dsc{display:flex;align-items:center}.dsc:hover{color:#8ea1ff!important}.dbtn svg{color:#8ea1ff}
+@media(max-width:760px){nav a.l{display:none}nav a.dsc{display:flex}}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <a class="logo" href="#top"><img src="logo.png" alt="" width="28" height="28">Senthym</a>
+  <a class="l" href="#features">Features</a><a class="l" href="#screens">Screenshots</a>
+  <a class="l" href="#how">How it works</a><a class="l" href="#performance">Performance</a><a class="l" href="#status">Status</a>
+  <a class="l" href="https://github.com/fabox-os/Senthym">GitHub</a>
+  <a class="l dsc" href="https://discord.gg/6VjX67S67d" aria-label="Join the Senthym Discord" title="Join our Discord"><svg viewBox="0 0 127.14 96.36" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z"/></svg></a>
+  <a class="btn p" href="#download">Download</a>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <img class="hero-logo" src="logo-512.png" alt="Senthym logo"><br><br>
+  <div class="badge"><b>v1.1</b> Open source · GPL-3.0 · Linux, Windows &amp; macOS</div>
+  <h1>Your Music.<span>Your Freedom.</span></h1>
+  <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <p class="lead">Senthym is a <b>Spotify-style music player</b> written in pure Rust. Search and stream from YouTube Music, Deezer and SoundCloud with <b>no ads, no subscription and no API keys</b>. Play your own files, read synced lyrics and watch official music videos up to 1080p.</p>
+  <div class="cta">
+    <a class="btn p" href="#download">⬇ Download Senthym</a>
+    <a class="btn" href="https://github.com/fabox-os/Senthym">★ View on GitHub</a>
+    <a class="btn dbtn" href="https://discord.gg/6VjX67S67d"><svg viewBox="0 0 127.14 96.36" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z"/></svg> Join the Discord</a>
+  </div>
+  <div class="chips"><span>Linux, Windows &amp; macOS</span><span>Pure Rust</span><span>No ads, no keys</span><span>Free &amp; open source</span></div>
+  <div class="shot"><img src="screenshots/home-and-video.webp" alt="Senthym: the Home screen and the Now Playing panel showing a music video" width="2000" height="1132"></div>
+</div></header>
+
+<section id="features"><div class="wrap">
+  <h2>Features</h2>
+  <p class="sub">Everything you expect from a modern music app, with the interface you already know and nothing between you and your music.</p>
+  <div class="grid">
+    <div class="card"><em>Sources</em><h3>Three sources, no keys</h3><p>YouTube Music is already set up. Deezer and SoundCloud are searched alongside it. No account and no API key needed; Spotify can be added optionally with your own key.</p></div>
+    <div class="card"><em>Search</em><h3>Search that gets out of the way</h3><p>Suggestions as you type, recent searches with covers, Browse all with genre and mood tiles, and each song listed once even when three sources have it.</p></div>
+    <div class="card"><em>Playback</em><h3>Starts instantly</h3><p>Senthym gets songs ready before you press play: what you hover over, what is on screen and what plays next. Queue, shuffle, repeat, history and crossfade included.</p></div>
+    <div class="card"><em>Video</em><h3>Music videos, up to 1080p</h3><p>Official videos, or the artist's live, acoustic and sessions films when there is no studio video. Every video is checked against the song. Switch to audio with one click.</p></div>
+    <div class="card"><em>Quality</em><h3>Quality that follows you</h3><p>Auto by default, or pick 1080p down to 240p. Changes land in a fraction of a second, with mini player, full screen and related videos over the picture.</p></div>
+    <div class="card"><em>Lyrics</em><h3>Synced lyrics, translated</h3><p>Line-by-line lyrics that follow the song, translated into your language, and kept in time even when a video opens with a scene before the music.</p></div>
+    <div class="card"><em>Library</em><h3>Playlists with your own cover</h3><p>Create playlists with a name, description and cover picture. Liked Songs, followed artists and saved albums live together, with a rail or a full grid.</p></div>
+    <div class="card"><em>Control</em><h3>Hide in this playlist</h3><p>A song stays in the list, greyed out, and is skipped when it is time to play. Works in every playlist, Liked Songs included, with an Undo.</p></div>
+    <div class="card"><em>Autoplay</em><h3>Follows your taste</h3><p>When your queue ends, Senthym blends the radios around what you actually chose, adapts within a couple of songs and rests artists you skip.</p></div>
+    <div class="card"><em>Reliable</em><h3>If a song fails, another source plays</h3><p>When a song can't be fetched, Senthym tries SoundCloud and another upload at once instead of skipping it, and tells you where it came from.</p></div>
+    <div class="card"><em>Yours</em><h3>Your files and downloads</h3><p>Play music from your computer next to the online library, download songs to keep them offline, and sign in with Google to bring in your own library.</p></div>
+    <div class="card"><em>Updates</em><h3>Updates inside the app</h3><p>Settings → Updates checks the releases page, downloads the right package, verifies it, installs it and reopens Senthym with your library and sign-in kept.</p></div>
+  </div>
+</div></section>
+
+<section id="screens"><div class="wrap">
+  <h2>See it</h2>
+  <p class="sub">A library on the left, the song bar at the bottom and the Now Playing panel on the right. If you have used a music app before, you already know where everything is.</p>
+  <div class="two">
+    <div><img src="screenshots/browse-all.webp" alt="Browse all: genre and mood tiles with covers" loading="lazy"><p class="cap">Browse all, with genre and mood tiles</p></div>
+    <div><img src="screenshots/lyrics.webp" alt="Synced lyrics with the Now Playing panel" loading="lazy"><p class="cap">Synced lyrics with translation</p></div>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <h2>How it works</h2>
+  <p class="sub">Senthym comes already set up. Open it, type a song and press play. There is nothing to configure, no account to create and no key to enter.</p>
+  <div class="steps">
+    <div class="card"><h3>Search</h3><p>Results from YouTube Music, Deezer and SoundCloud appear together, merged so each song shows once. Remixes, live versions and covers stay separate.</p></div>
+    <div class="card"><h3>Play</h3><p>Senthym's own streaming engine fetches the song and plays it through its audio player, so crossfade, volume, seeking and lyrics work the same for every source.</p></div>
+    <div class="card"><h3>Watch</h3><p>If the song has an official video, the picture plays in sync with the sound. Switch between video and audio at any moment, at the same position.</p></div>
+    <div class="card"><h3>Keep going</h3><p>When the queue ends, autoplay blends songs from what you chose. If a source fails, another one takes over.</p></div>
+  </div>
+</div></section>
+
+<section id="performance"><div class="wrap">
+  <h2>Light and fast</h2>
+  <p class="sub">Senthym is written in Rust and draws its own interface: no Electron, no web view. It starts quickly, stays small and keeps the music steady even while a 1080p video is playing.</p>
+  <div class="grid">
+    <div class="card"><h3>Small downloads</h3><p>The Windows program is a single 13 MB file and the .deb is about 5 MB. The AppImage and Flatpak are bigger because they carry ffmpeg inside.</p></div>
+    <div class="card"><h3>Light on memory</h3><p>About 140 MB when idle and about 155 MB while playing a song, measured on Linux. Pictures are capped at about 450 MB and the song cache at 1 GB.</p></div>
+    <div class="card"><h3>The sound never waits</h3><p>Audio has its own thread, and the video decoder runs at a lower priority, so a heavy picture can't make the music stutter.</p></div>
+    <div class="card"><h3>Ready before you ask</h3><p>Songs are prepared while you hover over them, scroll past them and queue them, so the next one starts at once and searches open instantly.</p></div>
+    <div class="card"><h3>Instant quality changes</h3><p>Every video quality is looked up in one go, so switching between 240p and 1080p takes a fraction of a second (0.1 to 0.4 s in our tests) and never freezes the picture.</p></div>
+    <div class="card"><h3>Never stuck</h3><p>If a source refuses a song, Senthym tries SoundCloud and another upload at the same time and plays the first that works.</p></div>
+  </div>
+</div></section>
+
+<section id="status"><div class="wrap">
+  <h2>Honest status</h2>
+  <p class="sub">Senthym was designed and tested on Linux (Ubuntu 26.04.1 LTS). Windows and macOS work too but get less testing. Every release lists what is done, what was fixed and what is not.</p>
+  <ul class="lim">
+    <li>Windows and macOS builds get less testing than Linux; the macOS app is not notarized</li>
+    <li>The update steps for Windows, macOS, .deb, .rpm and Flatpak have not been tried on real installs yet</li>
+    <li>Importing a sign-in from an installed browser only finds Linux browsers (sign in inside the app elsewhere)</li>
+    <li>The fallback to another source takes a few seconds, and Deezer only gives 30-second previews</li>
+  </ul>
+  <a class="btn" href="https://github.com/fabox-os/Senthym/blob/main/ROADMAP.md">Read the roadmap</a>
+  <a class="btn" href="https://github.com/fabox-os/Senthym/blob/main/CHANGELOG.md">Changelog</a>
+  <a class="btn" href="https://github.com/fabox-os/Senthym/issues">Report an issue</a>
+  <a class="btn dbtn" href="https://discord.gg/6VjX67S67d"><svg viewBox="0 0 127.14 96.36" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z"/></svg> Ask on Discord</a>
+</div></section>
+
+<section id="download"><div class="wrap" style="text-align:center">
+  <p class="eyebrow">DOWNLOAD</p>
+  <h2 class="big">Get Senthym.</h2>
+  <p class="sub" style="margin:0 auto 40px">Prebuilt packages with ffmpeg included where it is needed. Free and open source under the GPL.</p>
+  <div class="dl" style="text-align:left">
+    <div class="card dc hot">
+      <h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M7 9l3 2-3 2M12 14h4M8 21h8"/></svg>Linux</h3>
+      <p>AppImage, .deb, .rpm and Flatpak, for x86_64 and ARM64. The AppImage needs no installation and has ffmpeg inside.</p>
+      <div class="two-btn"><a class="btn p" href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-linux-x86_64.AppImage">x86_64</a><a class="btn" href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-linux-aarch64.AppImage">aarch64</a></div>
+      <div class="mini">Also: <a href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-linux-amd64.deb">.deb</a> · <a href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-linux-arm64.deb">.deb ARM64</a> · <a href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-linux-x86_64.rpm">.rpm</a> · <a href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-linux-aarch64.rpm">.rpm ARM64</a> · <a href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-linux-x86_64.flatpak">Flatpak</a> · <a href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-linux-aarch64.flatpak">Flatpak ARM64</a></div>
+      <pre><span class="d">$</span> chmod +x Senthym-linux-*.AppImage
+<span class="d">$</span> ./Senthym-linux-*.AppImage</pre></div>
+    <div class="card dc">
+      <h3><svg class="ic" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.700 2.400 2.900 2.300 1.200 0 1.600-.7 3-.7s1.800.7 3 .7 2-1.100 2.800-2.200c.9-1.300 1.200-2.500 1.300-2.600-.1 0-2.500-1-2.500-3.900zM14.200 5.600c.6-.8 1.100-1.800.9-2.900-.9 0-2 .6-2.600 1.400-.6.700-1.100 1.800-.9 2.800 1 .1 2-.5 2.600-1.300z"/></svg>macOS</h3>
+      <p>One universal app for Apple silicon and Intel, in a disk image. It is not notarized: clear the quarantine before the first launch.</p>
+      <div class="one-btn"><a class="btn" href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-macos-universal.dmg">Universal (.dmg)</a></div>
+      <pre><span class="d">$</span> xattr -dr com.apple.quarantine \
+  /Applications/Senthym.app</pre></div>
+    <div class="card dc">
+      <h3><svg class="ic" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.500 4.500v6.500H3zM11.500 4.400 21 3v8h-9.500zM3 12.500h7.500V19L3 18zM11.500 12.500H21V21l-9.500-1.300z"/></svg>Windows</h3>
+      <p>Windows 10 and 11. One file: download it and run it. SmartScreen warns because the file is not code signed. The first start fetches the video decoder by itself.</p>
+      <div class="one-btn"><a class="btn" href="https://github.com/fabox-os/Senthym/releases/latest/download/Senthym-windows.exe">Windows (.exe)</a></div></div>
+    <div class="card dc">
+      <h3><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>From source</h3>
+      <p>Rust stable, ffmpeg on your PATH (Linux) and working sound output. The README has the full guide.</p>
+      <div class="one-btn"><a class="btn" href="https://github.com/fabox-os/Senthym#building-and-running">Build instructions →</a></div>
+      <pre><span class="d">$</span> cd app
+<span class="d">$</span> cargo build --release</pre></div>
+  </div>
+  <div class="warn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3zM12 10v5M12 18v.5"/></svg><span>Senthym was designed and tested on Linux. The Windows and macOS builds get less testing: if you find a bug there, please <a href="https://github.com/fabox-os/Senthym/issues">open an issue</a>. All packages are on the <a href="https://github.com/fabox-os/Senthym/releases/latest">Releases page</a>.</span></div>
+</div></section>
+
+<section><div class="wrap" style="text-align:center">
+  <p class="eyebrow">OPEN SOURCE</p>
+  <h2 class="big">Built in the open.</h2>
+  <p class="sub" style="margin:0 auto 28px">Issues and pull requests are welcome. The code layout is documented, every release lists what changed and what is not done yet, and CI builds every package you can download here.</p>
+  <div class="cta">
+    <a class="btn p" href="https://github.com/fabox-os/Senthym">Star on GitHub</a>
+    <a class="btn" href="https://github.com/fabox-os/Senthym#project-layout">Read the architecture</a>
+    <a class="btn" href="https://github.com/fabox-os/Senthym/issues">Report an issue</a>
+    <a class="btn dbtn" href="https://discord.gg/6VjX67S67d"><svg viewBox="0 0 127.14 96.36" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z"/></svg> Discord</a>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="frow">
+    <div><a class="logo" href="#top"><img src="logo.png" alt="" width="28" height="28">Senthym</a>
+      <p>Free and open source software, GPL-3.0.</p></div>
+    <div class="flinks"><a href="https://github.com/fabox-os/Senthym">GitHub</a><a href="https://github.com/fabox-os/Senthym/releases">Releases</a><a href="https://discord.gg/6VjX67S67d">Discord</a><a href="https://github.com/fabox-os/Senthym/blob/main/ROADMAP.md">Roadmap</a><a href="https://github.com/fabox-os/Senthym/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/fabox-os/Senthym/blob/main/LICENSE">Licence</a></div>
+  </div>
+  <p class="fine">Senthym is an independent project. It is not affiliated with, sponsored by or endorsed by Spotify, YouTube, Deezer or SoundCloud. Their names and trademarks belong to their owners and are used only to say which services Senthym can search and play from, and which layout it follows.</p>
+</div></footer>
+</body>
+</html>

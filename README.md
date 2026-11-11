@@ -1,10 +1,33 @@
+<div align="center">
+
+<img src="docs/logo-512.png" alt="Senthym logo" width="200">
+
 # Senthym
 
-**Your Music. Your Freedom.**  ·  Version 1.1
+---
 
-> **Platforms:** Senthym was designed and tested on **Linux (Ubuntu 26.04.1 LTS)**. It also works on
-> **Windows** and **macOS**, but those versions get less testing. If you find a bug on Windows or macOS,
-> please report it by **opening an issue**.
+### A Spotify-style music player for Linux, Windows and macOS, written in Rust.
+
+Search and stream from YouTube Music, Deezer and SoundCloud with no ads, no subscription and no API keys. Your own files, synced lyrics and official music videos too.
+
+**Your Music. Your Freedom.**
+
+[![CI](https://img.shields.io/github/actions/workflow/status/fabox-os/Senthym/build.yml?label=CI&labelColor=2b3138&color=89CFF0)](https://github.com/fabox-os/Senthym/actions)
+[![release](https://img.shields.io/github/v/release/fabox-os/Senthym?label=release&labelColor=2b3138&color=38bdf8)](https://github.com/fabox-os/Senthym/releases/latest)
+[![license](https://img.shields.io/badge/license-GPL--3.0-89CFF0?labelColor=2b3138)](LICENSE)
+[![rust](https://img.shields.io/badge/rust-stable-1e88e5?labelColor=2b3138&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![platforms](https://img.shields.io/badge/Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-5bc8ff?labelColor=2b3138)](#download)
+[![chat](https://img.shields.io/badge/chat-Discord-5865F2?labelColor=2b3138&logo=discord&logoColor=white)](https://discord.gg/6VjX67S67d)
+
+[Website](https://fabox-os.github.io/Senthym/) • [Download](#download) • [Discord](https://discord.gg/6VjX67S67d) • [Features](#features) • [How it works](#how-it-works) • [Updates](#updates) • [Build from source](#building-and-running) • [Architecture](#project-layout) • [Roadmap](ROADMAP.md) • [Changelog](CHANGELOG.md) • [Contributing](#contributing)
+
+<br>
+
+<img src="docs/screenshots/home-and-video.webp" alt="Senthym: Home and the Now Playing panel with a music video" width="100%">
+
+</div>
+
+---
 
 Senthym is a desktop music player for Linux, Windows and macOS. It is written in Rust and draws its own fast, modern
 interface with [egui](https://github.com/emilk/egui). You search for any song, artist, album or playlist and
@@ -17,11 +40,31 @@ Spotify, you already know where everything is. It has its own dark look with a b
 
 ---
 
+**NOTE:** Senthym was designed and tested on **Linux (Ubuntu 26.04.1 LTS)**. It also runs on **Windows** and **macOS**, but those builds get less testing. If you find a bug on either, please **open an issue**.
+
+---
+
+## Features
+
+- **Instant playback.** Songs are fetched fast and prepared before you press play: what you hover over, what is on screen and what plays next. Queue, shuffle, repeat and a listening history included.
+- **Three sources, no keys.** YouTube Music is set up out of the box; Deezer and SoundCloud are searched alongside it, merged so each song appears once. No account and no API key. Spotify can be added optionally with your own key.
+- **Search that gets out of the way.** Suggestions as you type, recent searches with covers, Browse all with genre and mood tiles, and keyboard navigation.
+- **Music videos up to 1080p.** The official video, or the artist's live, acoustic or sessions film when there is no studio video, always checked against the song. Switch between video and audio at the same moment, with a mini player, full screen and related videos over the picture.
+- **Quality that follows you.** Auto by default, or a fixed 1080p down to 240p. A change lands in a fraction of a second and never freezes the picture.
+- **Never stuck on a broken song.** If a song can't be fetched, Senthym tries SoundCloud and another upload at once instead of skipping it, and tells you where it came from.
+- **Synced lyrics.** Line-by-line lyrics that follow the song, translated into your language, and kept in time even when a video opens with a scene before the music.
+- **A library that is yours.** Playlists with your own name, description and cover; Liked Songs, followed artists and saved albums together, as a rail or a full grid; a Follow button for every credited artist.
+- **Hide in this playlist.** A song stays in the list, greyed out, and is skipped when it is time to play, in every playlist, Liked Songs included, with an Undo.
+- **Autoplay that knows your taste.** When the queue ends, songs are blended from the radios around what you actually chose, adapting within a couple of songs and resting artists you skip.
+- **Your own files, downloads and crossfade.** Play music from your computer next to the online library, download songs for offline listening and blend one song into the next with an adjustable crossfade.
+- **Spotify-style interface.** A library on the left, the song bar at the bottom and the Now Playing panel on the right, with its own dark look, a baby-blue accent and a modern window frame.
+- **Updates inside the app.** Settings → Updates downloads the right package, checks it, installs it and reopens Senthym with your library and sign-in kept.
+- **Private by design.** No ads, no analytics, no tracking. Your library, settings and sign-in stay on your computer, and every download is checked before it is used.
+- **Runs everywhere.** Linux (x86_64 and ARM64: `.deb`, `.rpm`, AppImage, Flatpak), Windows (one `.exe`) and macOS (universal `.dmg`).
+
+---
+
 ## Screenshots
-
-**Home and Now Playing with the music video**
-
-![Home and Now Playing with the music video](docs/screenshots/home-and-video.webp)
 
 **Browse all**
 
@@ -48,52 +91,6 @@ nothing to configure, no account to create and no key to enter.
 
 You can also sign in to bring in your own library, and optionally connect Spotify (see **Music sources**
 below).
-
----
-
-## What it does
-
-### Listen to anything
-- **Search** for songs, artists, albums and playlists, with suggestions as you type, recent searches with
-  covers, and a Browse page of genres and moods.
-- **Instant playback.** Songs start fast: Senthym looks ahead at what you hover over, what is on screen and
-  what plays next, and gets it ready before you press play.
-- **Your own files.** Play music from your computer alongside the online library.
-- **Downloads.** Keep songs on your computer to play offline.
-- **Queue, shuffle, repeat and history**, plus automatic radio when your queue runs out — it follows your taste as it shifts, blending songs from your last few choices (newest weighing most), the way Spotify's autoplay does.
-
-### Music videos
-- Songs with an official music video play with the picture, in the side panel or in the full Now Playing
-  view, in mini-player mode or full screen.
-- **Quality menu:** Auto (follows your connection and the size of the view) or a fixed 240p up to 1080p.
-  Your choice is remembered.
-- One click on **Switch to audio** (or **Switch to video**) changes version at the same moment of the song.
-- **Related music videos** appear over the bottom of the Now Playing view.
-- The song keeps its own audio under the picture, so switching between video and audio doesn't change
-  the volume.
-
-### Lyrics
-- Synced, line-by-line lyrics that follow the song, with translation to your language.
-- Lyrics stay in time with video versions, even when the video starts with a scene before the music.
-
-### Your library
-- **Playlists** you create, with your own name, description and cover picture.
-- **Liked Songs**, followed artists and saved albums and playlists, all in one library, as a narrow rail or a
-  full grid with filters and search.
-- **Follow / Following** buttons for every artist credited on a song.
-- **Hide in this playlist:** a song stays in the list, greyed out, but is skipped when it is time to play.
-  Works in every playlist, Liked Songs included, with an Undo.
-- Optional sign-in to bring in your account's playlists, liked songs and artists. Senthym also works fully
-  without any account.
-
-### Sound
-- Crossfade between songs with an adjustable length.
-- Volume, seek and keyboard shortcuts.
-
-### The window
-- A modern custom title bar with minimize, maximize and close buttons; drag the empty top bar to move the
-  window and drag the edges to resize it.
-- Now Playing panel with cover or video, "In this video", About the artist and Credits.
 
 ---
 
@@ -243,6 +240,23 @@ app/
   ROADMAP.md          what is done and what is planned
   CHANGELOG.md        what changed
 ```
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome, and you can chat with the community on [Discord](https://discord.gg/6VjX67S67d). To report a bug, open an issue and say which system you use (Linux,
+Windows or macOS) and which package; for Windows and macOS this matters most, since those builds get less
+testing. To work on the code:
+
+```bash
+cd app
+cargo build --release     # build
+cargo test --release      # unit tests
+```
+
+Keep a change small and say how you checked it. The layout of the code is in [Project layout](#project-layout),
+what is planned is in the [Roadmap](ROADMAP.md) and what changed is in the [Changelog](CHANGELOG.md).
 
 ---
 
