@@ -208,7 +208,7 @@ pub fn connect_google(browser: &str) -> Result<(), String> {
         let _ = std::fs::remove_file(&fresh);
         let err = String::from_utf8_lossy(&out.stderr);
         let line = err.lines().filter(|l| l.contains("ERROR")).last().unwrap_or("couldn't read the browser's sign-in").replace("ERROR: ", "");
-        return Err(format!("Couldn't read your Google sign-in from {browser}: {line}"));
+        return Err(crate::helper::browser_help(browser, &line));
     }
     #[cfg(unix)]
     {

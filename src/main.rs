@@ -214,6 +214,14 @@ fn main() -> eframe::Result<()> {
         }
         return Ok(());
     }
+    if args.iter().any(|a| a == "--debug-browsers") {
+        // Developer check: the browsers found here, the system's default and the one suggested.
+        let b = helper::browsers();
+        println!("installed: {:?}", b.installed);
+        println!("default:   {:?}", b.default);
+        println!("suggested: {:?}", helper::suggested_browser());
+        return Ok(());
+    }
     if let Some(kind) = arg_value(&args, "--debug-update-check") {
         // Developer check: look for a release as an older version (SENTHYM_FAKE_VERSION), for the package
         // kind named (flatpak, appimage, deb, rpm, windows, macos), and download it (SENTHYM_UPDATE_DIR).

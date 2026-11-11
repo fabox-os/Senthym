@@ -836,6 +836,15 @@ impl App {
         self.spawn(move || Msg::GoogleConnect(crate::providers::connect_google(&b)));
     }
 
+    /// Remember the browser the sign-in is read from (and use it from now on).
+    pub fn use_browser(&mut self, name: &str) {
+        if !name.is_empty() && self.store.settings.youtube_browser != name {
+            crate::helper::set_browser(name);
+            self.store.settings.youtube_browser = name.to_string();
+            self.actions.push(Action::SaveSettings);
+        }
+    }
+
     pub fn google_sync(&mut self) {
         if !crate::providers::google_connected() || self.google_syncing {
             return;

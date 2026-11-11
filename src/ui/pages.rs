@@ -651,8 +651,13 @@ pub fn settings(ui: &mut Ui, app: &mut App) {
     } else {
         "No API key and no Premium needed. Sign in to music.youtube.com in your browser, pick that browser, then connect.".to_string()
     };
-    let browsers = crate::helper::installed_browsers();
-    let mut pick = app.store.settings.youtube_browser.clone();
+    // The browser the person chose, else the system's default one (or the first found).
+    let mut pick = if app.store.settings.youtube_browser.is_empty() {
+        crate::helper::suggested_browser().map(String::from).unwrap_or_default()
+    } else {
+        app.store.settings.youtube_browser.clone()
+    };
+    let mut picked = false;
     settings_row(ui, "Google account (YouTube Music)", &g_sub, |ui| {
         if g_connected {
             if ui.button("Sign out").clicked() {
@@ -664,24 +669,17 @@ pub fn settings(ui: &mut Ui, app: &mut App) {
         } else {
             let label = if app.google_busy { "Connecting…" } else { "Connect" };
             if ui.add_enabled(!pick.is_empty() && !app.google_busy, egui::Button::new(RichText::new(label).color(Color32::BLACK)).fill(ACCENT)).clicked() {
+                app.use_browser(&pick);
                 app.google_connect(&pick.clone());
             }
         }
-        let shown = if pick.is_empty() { "Choose browser".to_string() } else { pick.clone() };
-        egui::ComboBox::from_id_source("yt_browser").selected_text(shown).width(150.0).show_ui(ui, |ui| {
-            for b in ["firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "opera"] {
-                let label = if browsers.contains(&b) { b.to_string() } else { format!("{b} (not found)") };
-                ui.selectable_value(&mut pick, b.to_string(), label);
-            }
-        });
+        picked = super::browser_picker(ui, "yt_browser", 190.0, &mut pick);
     });
     if let Some(e) = app.google_error.clone() {
         ui.label(RichText::new(e).size(12.0).color(Color32::from_rgb(0xE5, 0x73, 0x73)));
     }
-    if pick != app.store.settings.youtube_browser {
-        crate::helper::set_browser(&pick);
-        app.store.settings.youtube_browser = pick;
-        app.actions.push(Action::SaveSettings);
+    if picked {
+        app.use_browser(&pick);
     }
     let sp_status = if crate::spotify::logged_in() {
         format!("Signed in as {}. Your Spotify library shows in the sidebar.", app.store.sp_user.as_ref().map(|u| u.name.clone()).unwrap_or_default())

@@ -144,20 +144,124 @@ pub fn set_browser(name: &str) {
     *BROWSER.lock().unwrap() = name.to_string();
 }
 
-/// Browsers found on this computer that the helper can read a YouTube sign-in from.
-pub fn installed_browsers() -> Vec<&'static str> {
+/// The browsers the sign-in can be read from, in the order they are offered (the names the helper uses).
+pub const KNOWN_BROWSERS: &[&str] = if cfg!(target_os = "macos") {
+    &["safari", "chrome", "firefox", "edge", "brave", "vivaldi", "opera", "chromium"]
+} else {
+    &["chrome", "edge", "firefox", "brave", "vivaldi", "opera", "chromium"]
+};
+
+/// What this computer has: the browsers the helper can read from, and the one that is the system's default.
+pub struct Browsers {
+    pub installed: Vec<&'static str>,
+    pub default: Option<&'static str>,
+}
+
+/// Looked up once (it asks the system a few questions), the first time it is needed.
+pub fn browsers() -> &'static Browsers {
+    static B: std::sync::OnceLock<Browsers> = std::sync::OnceLock::new();
+    B.get_or_init(|| {
+        let installed = detect_installed();
+        let default = crate::sys::default_browser().filter(|d| KNOWN_BROWSERS.contains(d));
+        Browsers { installed, default }
+    })
+}
+
+/// The browser to suggest when none was chosen yet: the system's default, else the first one found.
+pub fn suggested_browser() -> Option<&'static str> {
+    let b = browsers();
+    b.default.or_else(|| b.installed.first().copied())
+}
+
+/// Where each browser keeps its profile on this system (a browser counts as installed when it exists).
+fn browser_profile_dirs() -> Vec<(&'static str, Vec<std::path::PathBuf>)> {
+    #[cfg(not(target_os = "windows"))]
     let home = dirs::home_dir().unwrap_or_default();
-    let cfg = dirs::config_dir().unwrap_or_default();
-    let mut out = vec![];
-    if home.join(".mozilla/firefox").exists() || home.join("snap/firefox/common/.mozilla/firefox").exists() || home.join(".var/app/org.mozilla.firefox").exists() {
-        out.push("firefox");
+    #[cfg(target_os = "windows")]
+    {
+        let local = dirs::data_local_dir().unwrap_or_default();
+        let roaming = dirs::data_dir().unwrap_or_default();
+        vec![
+            ("chrome", vec![local.join("Google/Chrome/User Data")]),
+            ("edge", vec![local.join("Microsoft/Edge/User Data")]),
+            ("firefox", vec![roaming.join("Mozilla/Firefox/Profiles")]),
+            ("brave", vec![local.join("BraveSoftware/Brave-Browser/User Data")]),
+            ("vivaldi", vec![local.join("Vivaldi/User Data")]),
+            ("opera", vec![roaming.join("Opera Software/Opera Stable")]),
+            ("chromium", vec![local.join("Chromium/User Data")]),
+        ]
     }
-    for (name, dir) in [("chrome", "google-chrome"), ("chromium", "chromium"), ("brave", "BraveSoftware/Brave-Browser"), ("edge", "microsoft-edge"), ("vivaldi", "vivaldi"), ("opera", "opera")] {
-        if cfg.join(dir).exists() {
-            out.push(name);
-        }
+    #[cfg(target_os = "macos")]
+    {
+        let base = home.join("Library/Application Support");
+        vec![
+            ("safari", vec![home.join("Library/Cookies/Cookies.binarycookies"), home.join("Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies")]),
+            ("chrome", vec![base.join("Google/Chrome")]),
+            ("firefox", vec![base.join("Firefox/Profiles")]),
+            ("edge", vec![base.join("Microsoft Edge")]),
+            ("brave", vec![base.join("BraveSoftware/Brave-Browser")]),
+            ("vivaldi", vec![base.join("Vivaldi")]),
+            ("opera", vec![base.join("com.operasoftware.Opera")]),
+            ("chromium", vec![base.join("Chromium")]),
+        ]
     }
-    out
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let cfg = dirs::config_dir().unwrap_or_default();
+        vec![
+            ("chrome", vec![cfg.join("google-chrome")]),
+            ("edge", vec![cfg.join("microsoft-edge")]),
+            ("firefox", vec![home.join(".mozilla/firefox"), home.join("snap/firefox/common/.mozilla/firefox"), home.join(".var/app/org.mozilla.firefox")]),
+            ("brave", vec![cfg.join("BraveSoftware/Brave-Browser")]),
+            ("vivaldi", vec![cfg.join("vivaldi")]),
+            ("opera", vec![cfg.join("opera")]),
+            ("chromium", vec![cfg.join("chromium")]),
+        ]
+    }
+}
+
+fn detect_installed() -> Vec<&'static str> {
+    let dirs = browser_profile_dirs();
+    KNOWN_BROWSERS.iter().copied().filter(|name| dirs.iter().any(|(n, paths)| n == name && paths.iter().any(|p| p.exists()))).collect()
+}
+
+/// A short, friendly name for a browser.
+pub fn browser_label(name: &str) -> &'static str {
+    match name {
+        "chrome" => "Google Chrome",
+        "chromium" => "Chromium",
+        "edge" => "Microsoft Edge",
+        "firefox" => "Firefox",
+        "brave" => "Brave",
+        "vivaldi" => "Vivaldi",
+        "opera" => "Opera",
+        "safari" => "Safari",
+        _ => "Browser",
+    }
+}
+
+/// Words that help when reading the sign-in from a browser fails, by what went wrong.
+pub fn browser_help(browser: &str, raw: &str) -> String {
+    let name = browser_label(browser);
+    let low = raw.to_lowercase();
+    let chromium_family = matches!(browser, "chrome" | "edge" | "brave" | "vivaldi" | "opera" | "chromium");
+    if low.contains("could not copy") || low.contains("database is locked") || low.contains("permission denied") || low.contains("being used by another process") {
+        return format!("{name} is still open and keeps its sign-in locked. Close {name} completely (also from the tray icon near the clock) and press Connect again.");
+    }
+    if low.contains("dpapi") || low.contains("decrypt") || low.contains("app-bound") || low.contains("app bound") {
+        return if cfg!(windows) && chromium_family {
+            format!("{name} on Windows protects its sign-in so other programs can't read it. Pick Firefox instead (sign in to music.youtube.com there once), or use Senthym without an account.")
+        } else {
+            format!("Senthym couldn't decrypt {name}'s sign-in ({raw}).")
+        };
+    }
+    if low.contains("could not find") || low.contains("no such file") || low.contains("not found") || low.contains("unsupported browser") {
+        return format!("Senthym couldn't find a {name} profile on this computer. Pick the browser you use, and sign in to music.youtube.com in it first.");
+    }
+    if low.contains("keyring") || low.contains("secretstorage") || low.contains("kwallet") {
+        return format!("{name}'s sign-in is stored in your system keyring, which Senthym couldn't open. Unlock the keyring and try again.");
+    }
+    format!("Couldn't read your Google sign-in from {name}: {raw}")
 }
 
 /// JavaScript runtimes found on this computer. yt-dlp needs one to solve YouTube's signature
@@ -741,4 +845,30 @@ pub fn ensure_ffmpeg() -> Result<(), String> {
         }
     }
     Err("ffmpeg.exe not found in the download".into())
+}
+
+#[cfg(test)]
+mod browser_tests {
+    use super::browser_help;
+
+    #[test]
+    fn help_for_a_locked_browser_says_to_close_it() {
+        let t = browser_help("chrome", "Could not copy Chrome cookie database. See https://github.com/yt-dlp/yt-dlp/issues/7271");
+        assert!(t.contains("Close Google Chrome completely"), "{t}");
+    }
+
+    #[test]
+    fn help_for_encrypted_cookies_points_to_firefox_on_windows_only() {
+        let t = browser_help("edge", "Failed to decrypt with DPAPI");
+        if cfg!(windows) {
+            assert!(t.contains("Pick Firefox"), "{t}");
+        } else {
+            assert!(t.contains("couldn't decrypt"), "{t}");
+        }
+    }
+
+    #[test]
+    fn unknown_errors_keep_their_text() {
+        assert!(browser_help("firefox", "something odd").contains("something odd"));
+    }
 }

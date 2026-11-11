@@ -113,3 +113,87 @@ pub fn relaunch_later(program: &std::path::Path, args: &[String]) {
         let _ = cmd("cmd").args(["/C", &format!("ping -n 3 127.0.0.1 >nul & start \"\" {}", quoted.join(" "))]).spawn();
     }
 }
+
+/// The system's default web browser, as the name the helper uses ("chrome", "edge", "firefox"…), when it
+/// is one of the browsers a sign-in can be read from.
+pub fn default_browser() -> Option<&'static str> {
+    #[cfg(windows)]
+    {
+        // The program the person chose for web links, from their own settings.
+        let out = cmd("reg")
+            .args(["query", r"HKCU\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice", "/v", "ProgId"])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let prog = text.lines().find(|l| l.contains("ProgId"))?.split_whitespace().last()?.to_string();
+        return browser_from_text(&prog);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let out = cmd("defaults").args(["read", "com.apple.LaunchServices/com.apple.launchservices.secure", "LSHandlers"]).output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        for block in text.split('{') {
+            if block.contains("LSHandlerURLScheme = https") {
+                if let Some(line) = block.lines().find(|l| l.contains("LSHandlerRoleAll")) {
+                    return browser_from_text(line);
+                }
+            }
+        }
+        return None;
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let out = cmd("xdg-settings").args(["get", "default-web-browser"]).output().ok()?;
+        browser_from_text(&String::from_utf8_lossy(&out.stdout))
+    }
+}
+
+/// Which known browser a system's name for it means (a registry ProgId, a bundle id, a .desktop file name).
+pub fn browser_from_text(text: &str) -> Option<&'static str> {
+    let t = text.to_lowercase();
+    // Order matters: "edge" and "chromium" must be tried before the broader "chrome".
+    [
+        ("msedge", "edge"),
+        ("microsoft-edge", "edge"),
+        ("edgemac", "edge"),
+        ("firefox", "firefox"),
+        ("brave", "brave"),
+        ("vivaldi", "vivaldi"),
+        ("opera", "opera"),
+        ("chromium", "chromium"),
+        ("chromehtml", "chrome"),
+        ("google-chrome", "chrome"),
+        ("google.chrome", "chrome"),
+        ("safari", "safari"),
+    ]
+    .iter()
+    .find(|(needle, _)| t.contains(needle))
+    .map(|(_, name)| *name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::browser_from_text as b;
+
+    #[test]
+    fn default_browser_names_from_each_system() {
+        // Windows ProgIds
+        assert_eq!(b("ChromeHTML"), Some("chrome"));
+        assert_eq!(b("MSEdgeHTM"), Some("edge"));
+        assert_eq!(b("FirefoxURL-308046B0AF4A39CB"), Some("firefox"));
+        assert_eq!(b("BraveHTML"), Some("brave"));
+        assert_eq!(b("VivaldiHTM.ABCDEF"), Some("vivaldi"));
+        assert_eq!(b("OperaStable"), Some("opera"));
+        // macOS bundle ids
+        assert_eq!(b("LSHandlerRoleAll = \"com.google.chrome\";"), Some("chrome"));
+        assert_eq!(b("LSHandlerRoleAll = \"com.microsoft.edgemac\";"), Some("edge"));
+        assert_eq!(b("LSHandlerRoleAll = \"com.apple.safari\";"), Some("safari"));
+        assert_eq!(b("LSHandlerRoleAll = \"org.mozilla.firefox\";"), Some("firefox"));
+        // Linux .desktop names
+        assert_eq!(b("google-chrome.desktop\n"), Some("chrome"));
+        assert_eq!(b("chromium_chromium.desktop"), Some("chromium"));
+        assert_eq!(b("firefox_firefox.desktop"), Some("firefox"));
+        assert_eq!(b("microsoft-edge.desktop"), Some("edge"));
+        assert_eq!(b("someunknownbrowser.desktop"), None);
+    }
+}

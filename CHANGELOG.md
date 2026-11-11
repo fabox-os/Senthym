@@ -2,6 +2,17 @@
 
 All notable changes to Senthym. Newest first within each group.
 
+## 1.1.1 — 2026-11-11
+
+### Fixed
+- Windows 11 (and every system): the "Choose your browser" list on the welcome window did not open. It was drawn behind the window it belongs to; it now opens above it. (GitHub issue #1)
+- The browser list was a fixed set of names and only knew where Linux browsers keep their data, so on Windows and macOS every entry read "not found". Senthym now looks for Chrome, Edge, Firefox, Brave, Vivaldi, Opera and Chromium where Windows keeps them (and Safari and the others where macOS does) and lists only the ones installed.
+- Reading a browser's sign-in on Windows now explains what to do when it fails: close the browser completely when it keeps the sign-in locked, and pick Firefox when Chrome, Edge or Brave protect their cookies from other programs.
+
+### Added
+- The system's default browser is detected (Windows settings, macOS Launch Services, `xdg-settings` on Linux), marked "(default)" in the list and pre-selected, so "Connect Google account" works with one click and no choice to make.
+- Developer checks: `--debug-browsers` prints the browsers found, the default and the suggestion.
+
 ## 1.1 — 2026-11-10
 
 ### Added

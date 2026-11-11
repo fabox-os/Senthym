@@ -1403,16 +1403,55 @@ fn toasts(ctx: &egui::Context, app: &mut App) {
 
 /// The start-up window over a dimmed app: connect a Google account (no key, no Premium) or go on
 /// without an account. Hidden for good once the person chooses to use the app without accounts.
+/// A dropdown of the browsers found on this computer, the system's default one marked, shared by the
+/// welcome window and Settings. `pick` is the browser to use (the suggestion when none was chosen yet);
+/// true when the person picked another one.
+pub fn browser_picker(ui: &mut egui::Ui, id: &str, width: f32, pick: &mut String) -> bool {
+    let found = crate::helper::browsers();
+    // What is offered: what was found. When nothing was found, every known browser, so the list is never empty.
+    let mut offered: Vec<&'static str> = if found.installed.is_empty() { crate::helper::KNOWN_BROWSERS.to_vec() } else { found.installed.clone() };
+    // A browser chosen earlier stays in the list even if it can't be found now.
+    if let Some(k) = crate::helper::KNOWN_BROWSERS.iter().find(|k| **k == pick.as_str()) {
+        if !offered.contains(k) {
+            offered.push(k);
+        }
+    }
+    let label = |name: &str| {
+        let mut l = crate::helper::browser_label(name).to_string();
+        if found.default == Some(name) {
+            l.push_str(" (default)");
+        } else if !found.installed.is_empty() && !found.installed.contains(&name) {
+            l.push_str(" (not found)");
+        }
+        l
+    };
+    let shown = if pick.is_empty() { "Choose your browser".to_string() } else { label(pick) };
+    let before = pick.clone();
+    // Test switch: open the list at once (to check it is drawn above the window it is in).
+    if std::env::var_os("SENTHYM_TEST_OPEN_LIST").is_some() {
+        let popup = ui.make_persistent_id(egui::Id::new(id)).with("popup");
+        ui.memory_mut(|m| m.open_popup(popup));
+    }
+    egui::ComboBox::from_id_source(id).selected_text(shown).width(width).show_ui(ui, |ui| {
+        for name in offered {
+            ui.selectable_value(pick, name.to_string(), label(name));
+        }
+    });
+    *pick != before
+}
+
 fn welcome(ctx: &egui::Context, app: &mut App) {
     use spotify_pages::SPOTIFY_GREEN;
     let screen = ctx.screen_rect();
-    egui::Area::new(egui::Id::new("welcome_dim")).order(egui::Order::Foreground).fixed_pos(screen.min).show(ctx, |ui| {
+    // The dimmed backdrop sits below the card, and the card on the same layer as a dropdown's list (which
+    // is drawn on the Foreground layer): on a higher layer the list opened hidden behind the card.
+    egui::Area::new(egui::Id::new("welcome_dim")).order(egui::Order::Middle).fixed_pos(screen.min).show(ctx, |ui| {
         let (r, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
         ui.painter().rect_filled(r, 0.0, Color32::from_black_alpha(205));
     });
     let size = vec2(860.0f32.min(screen.width() - 40.0), 400.0);
     egui::Area::new(egui::Id::new("welcome_card"))
-        .order(egui::Order::Tooltip)
+        .order(egui::Order::Foreground)
         .fixed_pos(screen.center() - size / 2.0)
         .show(ctx, |ui| {
             let card = Rect::from_min_size(ui.cursor().min, size);
@@ -1428,25 +1467,21 @@ fn welcome(ctx: &egui::Context, app: &mut App) {
                     ui.add_space(4.0);
                     ui.label(egui::RichText::new("Your YouTube Music library, right here.").size(14.0).color(SUB));
                     ui.add_space(14.0);
-                    let browsers = crate::helper::installed_browsers();
-                    let mut pick = app.store.settings.youtube_browser.clone();
-                    let shown = if pick.is_empty() { "Choose your browser".to_string() } else { pick.clone() };
-                    egui::ComboBox::from_id_source("welcome_browser").selected_text(shown).width(220.0).show_ui(ui, |ui| {
-                        for b in ["firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "opera"] {
-                            let label = if browsers.contains(&b) { b.to_string() } else { format!("{b} (not found)") };
-                            ui.selectable_value(&mut pick, b.to_string(), label);
-                        }
-                    });
-                    if pick != app.store.settings.youtube_browser {
-                        crate::helper::set_browser(&pick);
-                        app.store.settings.youtube_browser = pick.clone();
-                        app.actions.push(Action::SaveSettings);
+                    // The browser the person chose, else the system's default one (or the first found).
+                    let mut pick = if app.store.settings.youtube_browser.is_empty() {
+                        crate::helper::suggested_browser().map(String::from).unwrap_or_default()
+                    } else {
+                        app.store.settings.youtube_browser.clone()
+                    };
+                    if browser_picker(ui, "welcome_browser", 220.0, &mut pick) {
+                        app.use_browser(&pick);
                     }
                     ui.add_space(10.0);
                     let can = !pick.is_empty() && !app.google_busy;
                     let label = if app.google_busy { "Connecting…" } else { "Connect Google account" };
                     let b = ui.add_enabled(can, egui::Button::new(egui::RichText::new(label).font(bold(16.0)).color(Color32::BLACK)).fill(SPOTIFY_GREEN).rounding(24.0).min_size(vec2(230.0, 46.0)));
                     if b.clicked() {
+                        app.use_browser(&pick);
                         app.google_connect(&pick);
                     }
                     if let Some(e) = &app.google_error {

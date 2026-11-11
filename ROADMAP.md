@@ -9,7 +9,7 @@ Spotify desktop app.
 > Naming: the product, crate, binary (`senthym`), window title, app id and data folder
 > (`~/.local/share/senthym`) are all **Senthym**. The folders of the earlier name are moved over on the first start.
 
-**Version 1.1** (2026-11-10). Version 1.0 was the first release (2026-11-08). Everything is listed in the changelog.
+**Version 1.1.1** (2026-11-11). Version 1.1 came out on 2026-11-10 and 1.0 was the first release (2026-11-08). Everything is listed in the changelog.
 
 Legend: ✅ done · 🔧 in progress · ⬜ planned
 
@@ -85,6 +85,7 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 - ✅ YouTube / Google sign-in through the app (fresh cookie file, removed on sign-out)
 - ✅ Synced YouTube Music library (liked, playlists, albums, artists)
 - ✅ Follow, like and save work signed in and signed out
+- ✅ Browser sign-in on Windows, macOS and Linux: installed browsers detected, the default one pre-selected, the list opens on the welcome window, clear help when a browser keeps its sign-in locked
 - ⬜ Optional: push follows to the YouTube account (needs Google account permissions)
 - ⬜ Spotify library: keep as optional
 
@@ -110,6 +111,7 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 - ✅ Update check and one-click update from GitHub releases (Settings and a notice card), keeping the library and sign-in
 - ⬜ Update from inside a Flatpak without the host-access permission (today: through `flatpak-spawn`, else the system installer)
 - ⬜ Test the Windows, macOS, .deb, .rpm and Flatpak update steps on real installs
+- ⬜ Try the new browser detection and sign-in on real Windows 11 and macOS machines
 
 ## Next
 
