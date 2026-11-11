@@ -40,7 +40,7 @@ Spotify, you already know where everything is. It has its own dark look with a b
 
 ---
 
-**NOTE:** Senthym was designed and tested on **Linux (Ubuntu 26.04.1 LTS)**. It also runs on **Windows** and **macOS**, but those builds get less testing. If you find a bug on either, please **open an issue**.
+**NOTE:** Senthym was designed and tested on **Linux (Ubuntu 26.04.1 LTS)**. It is tested on **Windows** too, and also runs on **macOS**, which gets less testing. If you find a bug on any system, please **open an issue**.
 
 ---
 

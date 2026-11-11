@@ -119,7 +119,7 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 
 ## Next
 
-1. ⬜ Test and polish the Windows and macOS builds
+1. ⬜ Test and polish the macOS build
 2. ⬜ Per-song video quality memory
 3. ⬜ Follow sync to the YouTube account
 4. ⬜ Crash investigation and long-run performance tests
