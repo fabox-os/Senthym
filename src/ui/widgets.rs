@@ -69,6 +69,8 @@ pub fn setup_style(ctx: &egui::Context) {
     style.visuals = egui::Visuals::dark();
     style.visuals.panel_fill = BG;
     style.visuals.window_fill = Color32::from_rgb(0x28, 0x28, 0x28);
+    style.visuals.menu_rounding = egui::Rounding::same(8.0);
+    style.spacing.menu_margin = egui::Margin::symmetric(4.0, 4.0);
     style.visuals.extreme_bg_color = Color32::from_rgb(0x24, 0x24, 0x24);
     style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, SUB);
     style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(0x2A, 0x2A, 0x2A);
@@ -479,13 +481,37 @@ pub enum RowContext<'a> {
 }
 
 /// The song options sheet (SongOptionsSheet in the original), as a right-click menu.
+/// A compact menu in the Spotify style: small text, tight rows, a soft highlight and no outlines.
+pub fn compact_menu(ui: &mut Ui) {
+    let st = ui.style_mut();
+    st.spacing.item_spacing = vec2(0.0, 0.0);
+    st.spacing.button_padding = vec2(12.0, 6.0);
+    st.spacing.interact_size.y = 30.0;
+    st.spacing.menu_margin = egui::Margin::symmetric(4.0, 4.0);
+    st.text_styles.insert(egui::TextStyle::Button, reg(13.0));
+    st.text_styles.insert(egui::TextStyle::Body, reg(13.0));
+    let hover = Color32::from_white_alpha(20);
+    let w = &mut st.visuals.widgets;
+    for (state, fill) in [(&mut w.inactive, Color32::TRANSPARENT), (&mut w.hovered, hover), (&mut w.active, hover), (&mut w.open, hover)] {
+        state.weak_bg_fill = fill;
+        state.bg_fill = fill;
+        state.bg_stroke = Stroke::NONE;
+        state.expansion = 0.0;
+        state.rounding = egui::Rounding::same(4.0);
+    }
+    w.hovered.fg_stroke = Stroke::new(1.0_f32, TEXT);
+    ui.set_min_width(190.0);
+}
+
 pub fn song_menu(ui: &mut Ui, app: &mut App, t: &Track, ctx: &RowContext) {
+    compact_menu(ui);
     let liked = app.store.is_liked(t);
     if ui.button(if liked { "Remove from Liked Songs" } else { "Add to Liked Songs" }).clicked() {
         app.actions.push(Action::ToggleLike(t.clone()));
         ui.close_menu();
     }
     ui.menu_button("Add to playlist", |ui| {
+        compact_menu(ui);
         if ui.button("+  New playlist").clicked() {
             app.ui_new_playlist = Some((String::new(), Some(t.clone())));
             ui.close_menu();
@@ -578,6 +604,7 @@ pub fn song_menu(ui: &mut Ui, app: &mut App, t: &Track, ctx: &RowContext) {
 }
 
 pub fn alt_stream_menu(ui: &mut Ui, app: &mut App, t: &Track) {
+    compact_menu(ui);
     match app.store.alt_streams.get(&t.key()) {
         Some(AltStream::YouTube(id)) => {
             ui.label(egui::RichText::new(format!("Current: YouTube video {id}")).color(SUB));
@@ -738,12 +765,20 @@ pub fn track_row(ui: &mut Ui, app: &mut App, t: &Track, opts: RowOpts) -> bool {
     // `allocate_ui_at_rect` pulled the cursor back up to the button's bottom edge, so the next row
     // started 5 px inside this one: both rows counted as hovered and the overlap showed as a bright line.)
     let mut more_ui = ui.child_ui(more_rect, egui::Layout::left_to_right(egui::Align::Center), None);
-    more_ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-    more_ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::NONE;
+    // No round background or outline in any state (hovered, pressed, menu open): the three dots are
+    // drawn on their own.
+    {
+        let w = &mut more_ui.visuals_mut().widgets;
+        for st in [&mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
+            st.weak_bg_fill = Color32::TRANSPARENT;
+            st.bg_fill = Color32::TRANSPARENT;
+            st.bg_stroke = Stroke::NONE;
+            st.expansion = 0.0;
+        }
+    }
     more_ui.visuals_mut().widgets.inactive.fg_stroke = Stroke::new(1.0_f32, if hovered { TEXT } else { DIM });
     let more = more_ui
         .menu_button(egui::RichText::new("   ").font(reg(13.0)), |ui| {
-            ui.set_min_width(210.0);
             song_menu(ui, app, t, &ctx);
         })
         .response;

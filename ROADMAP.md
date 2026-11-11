@@ -9,7 +9,7 @@ Spotify desktop app.
 > Naming: the product, crate, binary (`senthym`), window title, app id and data folder
 > (`~/.local/share/senthym`) are all **Senthym**. The folders of the earlier name are moved over on the first start.
 
-**Version 1.1.3** (2026-11-11). Versions 1.1.2 and 1.1.1 came out on 2026-11-11, 1.1 on 2026-11-10 and 1.0 was the first release (2026-11-08). Everything is listed in the changelog.
+**Version 1.1.4** (2026-11-11). Versions 1.1.3, 1.1.2 and 1.1.1 came out on 2026-11-11, 1.1 on 2026-11-10 and 1.0 was the first release (2026-11-08). Everything is listed in the changelog.
 
 Legend: ✅ done · 🔧 in progress · ⬜ planned
 
@@ -86,6 +86,7 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 - ✅ Synced YouTube Music library (liked, playlists, albums, artists)
 - ✅ Follow, like and save work signed in and signed out
 - ✅ Liked songs follow the YouTube Music account: one "Liked Songs" list (this computer + the account), hearts are sent to the account, and a new computer gets them after signing in
+- ✅ Song menus (the "⋯" button and right-click) are compact and Spotify-like: small text, tight rows, soft square highlight, no round button behind the dots
 - ✅ Same look on every system: Noto Sans and DejaVu Sans come with the program, system fonts are used for Chinese / Japanese / Korean and 【 】 marks; the "⋯" and search arrows are drawn as shapes
 - ✅ The streaming engine is set up when Senthym starts and on demand (Connect account, SoundCloud search), so a fresh install works at once; clear message if it can't download or, on Windows, won't start (Visual C++ Redistributable)
 - ✅ Browser sign-in on Windows, macOS and Linux: installed browsers detected, the default one pre-selected, the list opens on the welcome window, clear help when a browser keeps its sign-in locked

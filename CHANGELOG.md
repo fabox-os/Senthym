@@ -2,6 +2,12 @@
 
 All notable changes to Senthym. Newest first within each group.
 
+## 1.1.4 — 2026-11-11
+
+### Fixed
+- Windows: clicking the "⋯" button on a song showed a grey round shadow behind it; the button now has no background in any state.
+- The song menu (the "⋯" button and right-click) was too big and its highlighted row was a large pill. It is now compact like Spotify's: small text, tight rows, a soft square highlight and an even margin, also in the "Add to playlist" and "Alternative stream" submenus.
+
 ## 1.1.3 — 2026-11-11
 
 ### Added

@@ -1,19 +1,16 @@
-# Senthym 1.1.3
+# Senthym 1.1.4
 
-**Your Music. Your Freedom.** Liked songs now follow your YouTube Music account across computers, and the Windows look matches Linux.
+**Your Music. Your Freedom.** A patch release that tidies the song menu, from Windows testing.
 
 ## Packages
 Linux (x86_64 and ARM64): `.deb`, `.rpm`, AppImage, Flatpak · Windows: `.exe` · macOS: universal `.dmg`
 
 ## What's new
-✅ Liked songs follow your YouTube Music account: one "Liked Songs" list, hearts are sent to the account, and a new computer shows them after signing in
-✅ The program carries its own fonts, so text looks the same on Linux, Windows and macOS
+✅ The song menu ("⋯" button and right-click) is compact and Spotify-like: small text, tight rows, soft square highlight
 
 ## Fixed
-🛠️ Windows: empty squares instead of the "⋯" button, the search arrows and 【 】 brackets in titles
-🛠️ Windows: thin default font in lyrics and Settings
-🛠️ Full screen on a music video showed the page and a coloured edge around the picture on Windows
-🛠️ Settings: an old sign-in error stayed after connecting, and the browser list overlapped the text
+🛠️ Windows: a grey round shadow appeared behind the "⋯" button when clicked
+🛠️ The highlighted menu row was a large pill and the menu was too big
 
 ## Known limitations
 ❌ Windows fixes were checked on Linux and by type-checking only, not on a real Windows machine yet; please report anything that still looks wrong
