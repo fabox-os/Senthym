@@ -1,19 +1,17 @@
-# Senthym 1.1.1
+# Senthym 1.1.2
 
-**Your Music. Your Freedom.** A patch release that fixes signing in on Windows 11 (GitHub issue #1) and improves it on macOS and Linux.
+**Your Music. Your Freedom.** A patch release that fixes "The Senthym streaming engine isn't installed yet" on a fresh install, seen on Windows 10 (GitHub issue #3).
 
 ## Packages
 Linux (x86_64 and ARM64): `.deb`, `.rpm`, AppImage, Flatpak · Windows: `.exe` · macOS: universal `.dmg`
 
 ## What's new
-✅ The system's default browser is detected and pre-selected, so "Connect Google account" works with one click
-✅ Senthym looks for the browsers that are really installed (Chrome, Edge, Firefox, Brave, Vivaldi, Opera, Chromium; Safari on macOS) and lists only those
-✅ Clear help when reading a browser's sign-in fails: close the browser completely if it keeps the sign-in locked, or pick Firefox when Chrome, Edge or Brave protect their cookies on Windows
-✅ Developer check `--debug-browsers`
+✅ The streaming engine is set up when Senthym starts, so sign-in and search work right after installing
+✅ Connect Google account and SoundCloud search set it up on demand if it is still missing
 
 ## Fixed
-🛠️ Windows 11: the "Choose your browser" list on the welcome window did not open (it was drawn behind the window)
-🛠️ Windows and macOS: every browser in the list read "not found" because only Linux locations were checked
+🛠️ "Connect Google account" failed with "isn't installed yet" on a fresh install (the engine was only set up on the first song played)
+🛠️ Clear message when the engine can't be downloaded, or on Windows won't start (missing Visual C++ Redistributable)
 
 ## Known limitations
 ❌ Not yet tried on a real Windows 11 or macOS machine: the fix was checked on Linux and the Windows code was type-checked only. Please tell us on the issue if it works for you

@@ -84,11 +84,17 @@ pub fn install_latest() -> Result<String, String> {
         let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
     }
     std::fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
-    version_of(&dest).ok_or_else(|| "The Senthym streaming engine won't start".into())
+    version_of(&dest).ok_or_else(|| {
+        if cfg!(windows) {
+            "The Senthym streaming engine won't start. On Windows 10 this usually means the Microsoft Visual C++ Redistributable (x64) is missing: install it from aka.ms/vs/17/release/vc_redist.x64.exe and try again".into()
+        } else {
+            "The Senthym streaming engine won't start".to_string()
+        }
+    })
 }
 
 /// The managed copy, installing it on first use.
-fn ensure() -> Result<PathBuf, String> {
+pub fn ensure() -> Result<PathBuf, String> {
     // Starting yt-dlp just to read its version costs about half a second, so do it once per run.
     static VERIFIED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let managed = managed_path();

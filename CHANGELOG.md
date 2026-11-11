@@ -2,6 +2,12 @@
 
 All notable changes to Senthym. Newest first within each group.
 
+## 1.1.2 — 2026-11-11
+
+### Fixed
+- Windows 10 (and any fresh install): "Connect Google account" said "The Senthym streaming engine isn't installed yet". The engine was only set up the first time a song played. It is now set up when Senthym starts, and again on demand when you connect an account or search SoundCloud; if the download fails the real reason is shown. (GitHub issue #3)
+- When the engine downloads but won't start on Windows, the message now points to the missing Microsoft Visual C++ Redistributable.
+
 ## 1.1.1 — 2026-11-11
 
 ### Fixed

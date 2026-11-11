@@ -870,6 +870,12 @@ impl App {
             if let Err(e) = helper::ensure_ffmpeg() {
                 eprintln!("[senthym] ffmpeg setup: {e}");
             }
+            // Set the engine up now, so sign-in and search work on a fresh install.
+            if helper::find().is_none() {
+                if let Err(e) = helper::install_latest() {
+                    eprintln!("[senthym] engine setup: {e}");
+                }
+            }
             Msg::Helper(helper::find().map(|(_, v)| v))
         });
         if self.store.settings.check_updates {

@@ -9,7 +9,7 @@ Spotify desktop app.
 > Naming: the product, crate, binary (`senthym`), window title, app id and data folder
 > (`~/.local/share/senthym`) are all **Senthym**. The folders of the earlier name are moved over on the first start.
 
-**Version 1.1.1** (2026-11-11). Version 1.1 came out on 2026-11-10 and 1.0 was the first release (2026-11-08). Everything is listed in the changelog.
+**Version 1.1.2** (2026-11-11). Version 1.1.1 and 1.1 came out on 2026-11-10 and 1.0 was the first release (2026-11-08). Everything is listed in the changelog.
 
 Legend: ✅ done · 🔧 in progress · ⬜ planned
 

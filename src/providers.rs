@@ -23,7 +23,7 @@ fn agent() -> ureq::Agent {
 pub const SOUNDCLOUD_PREVIEW_SECONDS: f64 = 30.5;
 
 pub fn soundcloud_search(query: &str) -> Result<Vec<Item>, String> {
-    let (bin, _) = crate::helper::find().ok_or("The Senthym streaming engine isn't installed yet — play any song once to set it up")?;
+    let bin = crate::helper::ensure()?;
     let out = crate::sys::cmd(bin)
         .args(["-q", "--no-warnings", "--flat-playlist", "-J", &format!("scsearch25:{query}")])
         .output()
@@ -190,7 +190,7 @@ fn cookie_file() -> std::path::PathBuf {
 
 /// Read the YouTube sign-in from a browser (through yt-dlp) and keep it for YouTube Music requests.
 pub fn connect_google(browser: &str) -> Result<(), String> {
-    let (bin, _) = crate::helper::find().ok_or("The Senthym streaming engine isn't installed yet")?;
+    let bin = crate::helper::ensure()?;
     // yt-dlp refuses a cookie file that already exists but is empty ("does not look like a Netscape
     // format cookies file"), which is what a previous disconnect or failed attempt used to leave
     // behind. So write to a fresh file and only move it into place once it has the sign-in in it.
