@@ -673,9 +673,13 @@ pub fn settings(ui: &mut Ui, app: &mut App) {
                 app.google_connect(&pick.clone());
             }
         }
-        picked = super::browser_picker(ui, "yt_browser", 190.0, &mut pick);
+        // The browser list is only for connecting; once signed in it would crowd the row.
+        if !g_connected {
+            picked = super::browser_picker(ui, "yt_browser", 190.0, &mut pick);
+        }
     });
-    if let Some(e) = app.google_error.clone() {
+    // An old failed attempt is not shown once the account is connected.
+    if let Some(e) = app.google_error.clone().filter(|_| !g_connected) {
         ui.label(RichText::new(e).size(12.0).color(Color32::from_rgb(0xE5, 0x73, 0x73)));
     }
     if picked {

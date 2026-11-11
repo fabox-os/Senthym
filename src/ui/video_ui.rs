@@ -276,6 +276,9 @@ pub fn overlays(ctx: &egui::Context, app: &mut App) {
         }
         return;
     }
+    if !fs {
+        ctx.data_mut(|d| d.remove::<f64>(egui::Id::new("video_fs_entered")));
+    }
     if fs {
         fullscreen(ctx, app);
     } else if pip {
@@ -329,12 +332,26 @@ fn mini_player(ctx: &egui::Context, app: &mut App) {
 fn fullscreen(ctx: &egui::Context, app: &mut App) {
     let screen = ctx.screen_rect();
     let exit = |ctx: &egui::Context| {
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new(FS_KEY), false));
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new(FS_KEY), false);
+            d.remove::<f64>(egui::Id::new("video_fs_entered"));
+        });
         ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
     };
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         exit(ctx);
         return;
+    }
+    // Black behind everything, well past the window's edges: while Windows changes the window to full
+    // screen its size is reported a moment late, and the page underneath (the player bar's round
+    // button, the window's coloured edge) showed around the picture.
+    ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("video_full_backdrop")))
+        .with_clip_rect(Rect::EVERYTHING)
+        .rect_filled(screen.expand(4000.0), 0.0, Color32::BLACK);
+    // Keep redrawing for a moment so the picture follows the window to its final size.
+    let entered: f64 = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("video_fs_entered"), || ctx.input(|i| i.time)));
+    if ctx.input(|i| i.time) - entered < 1.5 {
+        ctx.request_repaint();
     }
     egui::Area::new(egui::Id::new("video_full")).order(egui::Order::Tooltip).fixed_pos(screen.min).show(ctx, |ui| {
         let (r, resp) = ui.allocate_exact_size(screen.size(), Sense::click());

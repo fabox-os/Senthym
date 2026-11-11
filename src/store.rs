@@ -175,6 +175,8 @@ pub struct Store {
     pub welcome_dismissed: bool,
     /// YouTube Music library of the connected Google account (kept in the app).
     pub gl_liked: Vec<Track>,
+    /// The songs liked on this computer have been sent to the YouTube Music account (done once per sign-in).
+    pub likes_uploaded: bool,
     pub gl_playlists: Vec<Item>,
     pub gl_albums: Vec<Item>,
     pub gl_artists: Vec<Item>,
@@ -274,14 +276,28 @@ impl Store {
 
     pub fn is_liked(&self, t: &Track) -> bool {
         let k = t.key();
-        self.liked.iter().any(|x| x.key() == k)
+        self.liked.iter().any(|x| x.key() == k) || self.gl_liked.iter().any(|x| x.key() == k)
+    }
+
+    /// Every liked song: the ones liked here, then the ones liked on the YouTube Music account (on any
+    /// computer) that aren't already in the list.
+    pub fn liked_all(&self) -> Vec<Track> {
+        let mut seen: std::collections::HashSet<String> = self.liked.iter().map(|t| t.key()).collect();
+        let mut v = self.liked.clone();
+        for t in &self.gl_liked {
+            if seen.insert(t.key()) {
+                v.push(t.clone());
+            }
+        }
+        v
     }
 
     /// Toggle a like; returns true when the song is now liked.
     pub fn toggle_like(&mut self, t: &Track) -> bool {
         let k = t.key();
-        if let Some(pos) = self.liked.iter().position(|x| x.key() == k) {
-            self.liked.remove(pos);
+        if self.is_liked(t) {
+            self.liked.retain(|x| x.key() != k);
+            self.gl_liked.retain(|x| x.key() != k);
             false
         } else {
             self.liked.insert(0, t.clone());

@@ -216,7 +216,21 @@ pub fn search_box(ui: &mut Ui, app: &mut App, width: f32) {
                     let (hr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
                     let key_box = |ui: &Ui, rect: Rect, label: &str| {
                         ui.painter().rect_stroke(rect, 4.0, egui::Stroke::new(1.0_f32, SUB));
-                        ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, reg(12.0), SUB);
+                        let c = rect.center();
+                        let st = egui::Stroke::new(1.4_f32, SUB);
+                        // Arrows are drawn as lines: the "↑" / "↓" characters are missing from the
+                        // Windows system fonts and showed as empty squares.
+                        match label {
+                            "↑" | "↓" => {
+                                let d = if label == "↑" { -1.0 } else { 1.0 };
+                                ui.painter().line_segment([c + vec2(0.0, -4.5 * d), c + vec2(0.0, 4.5 * d)], st);
+                                ui.painter().line_segment([c + vec2(-3.5, 1.0 * d), c + vec2(0.0, 4.5 * d)], st);
+                                ui.painter().line_segment([c + vec2(3.5, 1.0 * d), c + vec2(0.0, 4.5 * d)], st);
+                            }
+                            _ => {
+                                ui.painter().text(c, Align2::CENTER_CENTER, label, reg(12.0), SUB);
+                            }
+                        }
                     };
                     key_box(ui, Rect::from_center_size(pos2(hr.left() + 26.0, hr.center().y), vec2(22.0, 22.0)), "↑");
                     key_box(ui, Rect::from_center_size(pos2(hr.left() + 52.0, hr.center().y), vec2(22.0, 22.0)), "↓");
@@ -342,7 +356,7 @@ pub fn search_box(ui: &mut Ui, app: &mut App, width: f32) {
                             text_trunc(ui, pos2(x, ir.center().y - 2.0), &it.title, reg(17.0), TEXT, w, Align2::LEFT_BOTTOM);
                             let sub = match it.kind {
                                 ItemKind::Artist => "Artist".to_string(),
-                                ItemKind::Video => format!("▶ Music video • {}", it.subtitle.trim_start_matches("Video • ")),
+                                ItemKind::Video => format!("Music video • {}", it.subtitle.trim_start_matches("Video • ")),
                                 ItemKind::Song => format!("Song • {}", it.subtitle),
                                 _ => if it.subtitle.is_empty() { it.kind.label().to_string() } else { it.subtitle.clone() },
                             };
@@ -563,7 +577,7 @@ fn shortcut_tile(ui: &mut Ui, app: &mut App, it: &Item, cw: f32) {
         if pbtn.clicked() {
             played = true;
             match it.id.as_str() {
-                "liked" => app.actions.push(Action::PlayTracks { tracks: app.store.liked.clone(), start: 0, shuffle: false, context: Some(App::liked_item()) }),
+                "liked" => app.actions.push(Action::PlayTracks { tracks: app.store.liked_all(), start: 0, shuffle: false, context: Some(App::liked_item()) }),
                 "local" => app.actions.push(Action::PlayTracks { tracks: app.store.local_tracks.clone(), start: 0, shuffle: false, context: None }),
                 _ => app.actions.push(Action::PlayItem(it.clone(), false)),
             }
@@ -791,7 +805,7 @@ fn open_library_item(app: &mut App, it: &Item) {
 
 fn play_library_item(app: &mut App, it: &Item) {
     match it.id.as_str() {
-        "liked" => app.actions.push(Action::PlayTracks { tracks: app.store.liked.clone(), start: 0, shuffle: false, context: Some(App::liked_item()) }),
+        "liked" => app.actions.push(Action::PlayTracks { tracks: app.store.liked_all(), start: 0, shuffle: false, context: Some(App::liked_item()) }),
         "local" => app.actions.push(Action::PlayTracks { tracks: app.store.local_tracks.clone(), start: 0, shuffle: false, context: None }),
         "history" => app.actions.push(Action::Navigate(Route::History)),
         id if id.starts_with("local-") => {
@@ -855,7 +869,7 @@ fn library(ui: &mut Ui, app: &mut App) {
     let mut items: Vec<Item> = vec![];
     if f.is_none() || f == Some(ItemKind::Playlist) {
         let mut liked = App::liked_item();
-        liked.subtitle = format!("Playlist • {} songs", app.store.liked.len());
+        liked.subtitle = format!("Playlist • {} songs", app.store.liked_all().len());
         items.push(liked);
         for p in &app.store.playlists {
             items.push(Item {
@@ -1482,7 +1496,7 @@ fn user_playlist(ui: &mut Ui, app: &mut App, id: &str) {
 }
 
 fn liked(ui: &mut Ui, app: &mut App) {
-    let tracks = app.store.liked.clone();
+    let tracks = app.store.liked_all();
     header(ui, app, Header { kind: "Playlist", title: "Liked Songs", line: format!("{} songs", tracks.len()), cover: None, round: false, special: Some("liked") });
     action_row(ui, app, &tracks, App::liked_item(), |_, _| {});
     if tracks.is_empty() {

@@ -296,7 +296,7 @@ fn kind_group(k: &ItemKind) -> Option<LibFilter> {
 fn library_entries(app: &App) -> Vec<Entry> {
     let mut v: Vec<Entry> = vec![];
     let st = &app.store;
-    v.push(Entry { cover: EntryCover::Kind(SidebarKind::Liked), title: "Liked Songs".into(), sub: format!("Playlist • {} songs", st.liked.len()), route: Route::Liked, group: Some(LibFilter::Playlists) });
+    v.push(Entry { cover: EntryCover::Kind(SidebarKind::Liked), title: "Liked Songs".into(), sub: format!("Playlist • {} songs", st.liked_all().len()), route: Route::Liked, group: Some(LibFilter::Playlists) });
     v.push(Entry { cover: EntryCover::Kind(SidebarKind::Local), title: "Local files".into(), sub: format!("Music on this computer • {}", st.local_tracks.len()), route: Route::LocalFiles, group: Some(LibFilter::Playlists) });
     v.push(Entry { cover: EntryCover::Kind(SidebarKind::Downloads), title: "Downloads".into(), sub: format!("{} downloaded", st.downloads.len()), route: Route::Downloads, group: None });
     v.push(Entry { cover: EntryCover::Kind(SidebarKind::History), title: "Listening history".into(), sub: "Your plays and stats".into(), route: Route::History, group: None });
@@ -315,7 +315,7 @@ fn library_entries(app: &App) -> Vec<Entry> {
     }
     // Google (YouTube Music) library, saved in the app.
     if crate::providers::google_connected() {
-        v.push(Entry { cover: EntryCover::Kind(SidebarKind::Liked), title: "Liked Songs".into(), sub: format!("YouTube Music • {} songs", st.gl_liked.len()), route: Route::Playlist("LM".into()), group: Some(LibFilter::Playlists) });
+        // (The account's liked songs are part of "Liked Songs" above.)
         for it in st.gl_playlists.iter().chain(st.gl_albums.iter()).chain(st.gl_artists.iter()).filter(|g| !st.followed_artists.iter().chain(st.saved_albums.iter()).chain(st.saved_playlists.iter()).any(|x| x.id == g.id)) {
             let route = match it.kind {
                 ItemKind::Album => Route::Album(it.id.clone()),

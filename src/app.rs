@@ -832,6 +832,7 @@ impl App {
             return;
         }
         self.google_busy = true;
+        self.google_error = None;
         let b = browser.to_string();
         self.spawn(move || Msg::GoogleConnect(crate::providers::connect_google(&b)));
     }
@@ -855,6 +856,8 @@ impl App {
 
     pub fn google_disconnect(&mut self) {
         crate::providers::disconnect_google();
+        self.google_error = None;
+        self.store.likes_uploaded = false;
         self.store.gl_liked.clear();
         self.store.gl_playlists.clear();
         self.store.gl_albums.clear();
@@ -1279,6 +1282,7 @@ impl App {
                 self.google_busy = false;
                 match r {
                     Ok(()) => {
+                        self.google_error = None;
                         self.show_welcome = false;
                         self.toast("Google account connected");
                         self.google_sync();
@@ -1293,6 +1297,23 @@ impl App {
                 self.google_syncing = false;
                 match r {
                     Ok(lib) => {
+                        if crate::providers::google_connected() && !lib.liked.is_empty() {
+                            let account: std::collections::HashSet<String> = lib.liked.iter().map(|t| t.key()).collect();
+                            if !self.store.likes_uploaded {
+                                // First sync after signing in: songs liked on this computer go to the account.
+                                let ids: Vec<String> = self.store.liked.iter().filter(|t| !account.contains(&t.key())).filter_map(|t| t.video_id().map(String::from)).take(200).collect();
+                                self.store.likes_uploaded = true;
+                                if !ids.is_empty() {
+                                    self.spawn(move || {
+                                        let n = ids.iter().filter(|id| crate::ytm::rate(id, true).is_ok()).count();
+                                        Msg::Note(format!("{n} liked songs from this computer were added to your YouTube Music account"))
+                                    });
+                                }
+                            } else {
+                                // The account is the truth: a song un-liked on another computer goes away here too.
+                                self.store.liked.retain(|t| t.video_id().is_none() || account.contains(&t.key()));
+                            }
+                        }
                         self.store.gl_liked = lib.liked;
                         self.store.gl_playlists = lib.playlists;
                         self.store.gl_albums = lib.albums;
@@ -2688,6 +2709,14 @@ impl App {
             Action::ToggleLike(t) => {
                 let liked = self.store.toggle_like(&t);
                 self.store.save();
+                if crate::providers::google_connected() {
+                    if let Some(id) = t.video_id().map(String::from) {
+                        self.spawn(move || match crate::ytm::rate(&id, liked) {
+                            Ok(()) => Msg::Nothing,
+                            Err(e) => Msg::Note(format!("Couldn't update your YouTube Music likes: {e}")),
+                        });
+                    }
+                }
                 self.toast(if liked { "Added to Liked Songs" } else { "Removed from Liked Songs" });
             }
             Action::HideInPlaylist(pid, name, t, hide) => {

@@ -24,38 +24,42 @@ pub fn reg(size: f32) -> FontId {
 
 pub fn setup_style(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
-    let candidates_regular = [
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-        "/usr/share/fonts/noto/NotoSans-Regular.ttf",
-        "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-    ];
-    let candidates_bold = [
-        "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-        "/usr/share/fonts/noto/NotoSans-Bold.ttf",
-        "/usr/share/fonts/google-noto/NotoSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-    ];
-    let fallback = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf"];
-    let load = |list: &[&str]| list.iter().find_map(|p| std::fs::read(p).ok());
+    // The fonts come with the program (Noto Sans, and DejaVu Sans for symbols such as ♪), so the text
+    // looks the same on Linux, Windows and macOS instead of using whatever the system has.
+    fonts.font_data.insert("ui".into(), egui::FontData::from_static(include_bytes!("../../assets/fonts/NotoSans-Regular.ttf")));
+    fonts.font_data.insert("ui-bold".into(), egui::FontData::from_static(include_bytes!("../../assets/fonts/NotoSans-Bold.ttf")));
+    fonts.font_data.insert("dejavu".into(), egui::FontData::from_static(include_bytes!("../../assets/fonts/DejaVuSans.ttf")));
     let mut prop = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
     let mut bold_family = prop.clone();
-    if let Some(b) = load(&fallback) {
-        fonts.font_data.insert("dejavu".into(), egui::FontData::from_owned(b));
-        prop.push("dejavu".into());
-        bold_family.push("dejavu".into());
-    }
-    if let Some(r) = load(&candidates_regular) {
-        fonts.font_data.insert("ui".into(), egui::FontData::from_owned(r));
-        prop.insert(0, "ui".into());
-    }
-    if let Some(b) = load(&candidates_bold) {
-        fonts.font_data.insert("ui-bold".into(), egui::FontData::from_owned(b));
-        bold_family.insert(0, "ui-bold".into());
-    } else if prop.first().map(|s| s == "ui").unwrap_or(false) {
-        bold_family.insert(0, "ui".into());
+    prop.insert(0, "ui".into());
+    prop.push("dejavu".into());
+    bold_family.insert(0, "ui-bold".into());
+    bold_family.push("dejavu".into());
+    // Scripts and marks these fonts lack (the 【 】 brackets and Chinese, Japanese, Korean text in song
+    // titles, more symbols): every system font below that exists is added as a fallback, in this order.
+    let system = [
+        "C:\\Windows\\Fonts\\msyh.ttc",
+        "C:\\Windows\\Fonts\\YuGothR.ttc",
+        "C:\\Windows\\Fonts\\malgun.ttf",
+        "C:\\Windows\\Fonts\\msgothic.ttc",
+        "C:\\Windows\\Fonts\\simsun.ttc",
+        "C:\\Windows\\Fonts\\seguisym.ttf",
+        "C:\\Windows\\Fonts\\segoeui.ttf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    ];
+    for (i, path) in system.iter().enumerate() {
+        if let Ok(b) = std::fs::read(path) {
+            let name = format!("system{i}");
+            fonts.font_data.insert(name.clone(), egui::FontData::from_owned(b));
+            prop.push(name.clone());
+            bold_family.push(name);
+        }
     }
     fonts.families.insert(FontFamily::Proportional, prop);
     fonts.families.insert(FontFamily::Name("bold".into()), bold_family);
@@ -692,7 +696,7 @@ pub fn track_row(ui: &mut Ui, app: &mut App, t: &Track, opts: RowOpts) -> bool {
     let title_w = (rect.right() - right_reserved - album_w - x - 12.0).max(60.0);
     let title_col = fade(if is_current { ACCENT } else { TEXT });
     text_trunc(ui, pos2(x, rect.center().y - 1.0), &t.title, reg(15.0), title_col, title_w, Align2::LEFT_BOTTOM);
-    let sub = if app.store.download_for(t).is_some() { format!("⬇ {}", t.artist) } else { t.artist.clone() };
+    let sub = if app.store.download_for(t).is_some() { format!("Downloaded · {}", t.artist) } else { t.artist.clone() };
     text_trunc(ui, pos2(x, rect.center().y + 2.0), if sub.is_empty() { "Unknown artist" } else { &sub }, reg(13.0), fade(SUB), title_w, Align2::LEFT_TOP);
     if album_w > 0.0 {
         let ax = rect.right() - right_reserved - album_w;
@@ -738,11 +742,14 @@ pub fn track_row(ui: &mut Ui, app: &mut App, t: &Track, opts: RowOpts) -> bool {
     more_ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::NONE;
     more_ui.visuals_mut().widgets.inactive.fg_stroke = Stroke::new(1.0_f32, if hovered { TEXT } else { DIM });
     let more = more_ui
-        .menu_button("⋯", |ui| {
+        .menu_button(egui::RichText::new("   ").font(reg(13.0)), |ui| {
             ui.set_min_width(210.0);
             song_menu(ui, app, t, &ctx);
         })
         .response;
+    // Three dots drawn as shapes: the "⋯" character is missing from the Windows and macOS system fonts
+    // and showed as an empty square there.
+    paint_icon(ui.painter(), Rect::from_center_size(more_rect.center(), vec2(16.0, 16.0)), Icon::More, if hovered || more.hovered() { TEXT } else { DIM });
     if more.clicked() || more.hovered() {
         clicked_other = clicked_other || more.clicked();
     }

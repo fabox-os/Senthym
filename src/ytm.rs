@@ -53,6 +53,13 @@ fn post(endpoint: &str, mut body: Value) -> Result<Value, String> {
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
+/// Like (or remove the like of) a song on the signed-in YouTube Music account, so likes follow the
+/// account to every computer.
+pub fn rate(video_id: &str, like: bool) -> Result<(), String> {
+    let endpoint = if like { "like/like" } else { "like/removelike" };
+    post(endpoint, json!({"target": {"videoId": video_id}})).map(|_| ())
+}
+
 // ---------------------------------------------------------------- audio versions
 
 /// What kind each video id is (MUSIC_VIDEO_TYPE_ATV = audio version, _OMV = official music video, ...).

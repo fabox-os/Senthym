@@ -2,6 +2,19 @@
 
 All notable changes to Senthym. Newest first within each group.
 
+## 1.1.3 — 2026-11-11
+
+### Added
+- **Liked songs follow your YouTube Music account**: "Liked Songs" is now one list made of the songs liked on this computer and the account's liked songs, so a second computer or another system shows them all after signing in. Liking or un-liking a song also does it on the account; the first sync after signing in sends the songs liked only on this computer to the account; later syncs follow the account (a song un-liked elsewhere goes away here). Only YouTube Music songs can be liked on the account.
+- The program now carries its own fonts (Noto Sans and DejaVu Sans), so text looks the same on Linux, Windows and macOS.
+
+### Fixed
+- Windows: the "⋯" button on songs, the arrows in the search hints, the download mark and the "▶" in results showed as empty squares; they are drawn as shapes or plain words now.
+- Windows: squares in titles that use 【 】 brackets or other scripts; system fonts for Chinese, Japanese and Korean are added as fallbacks.
+- Windows: text in lyrics and Settings used a thin default font instead of the Noto Sans used on Linux.
+- Full screen on a music video: the page below (the player bar's round button, the window edge) showed around the picture while Windows resized the window. The picture now sits on a black layer and follows the final size.
+- Settings: an old "No Google sign-in found" message stayed on screen after the account was connected, and the browser list overlapped the text when connected. The message clears and the list shows only when connecting.
+
 ## 1.1.2 — 2026-11-11
 
 ### Fixed
