@@ -19,6 +19,8 @@ Search and stream from YouTube Music, Deezer and SoundCloud with no ads, no subs
 [![platforms](https://img.shields.io/badge/Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-5bc8ff?labelColor=2b3138)](#download)
 [![chat](https://img.shields.io/badge/chat-Discord-5865F2?labelColor=2b3138&logo=discord&logoColor=white)](https://discord.gg/6VjX67S67d)
 
+[![As seen on Open Source Alternatives](https://www.opensourcealternatives.to/badge-osa.svg)](https://www.opensourcealternatives.to)
+
 [Website](https://fabox-os.github.io/Senthym/) • [Download](#download) • [Discord](https://discord.gg/6VjX67S67d) • [Features](#features) • [How it works](#how-it-works) • [Updates](#updates) • [Build from source](#building-and-running) • [Architecture](#project-layout) • [Roadmap](ROADMAP.md) • [Changelog](CHANGELOG.md) • [Contributing](#contributing)
 
 <br>
