@@ -141,6 +141,7 @@ enum Msg {
     SpotifyMatch(String, String),
     GoogleConnect(Result<(), String>),
     GoogleSync(Result<crate::providers::GoogleLibrary, String>),
+    GooglePlaylistAdded(String, Result<(), String>),
     DeezerHome(Result<Vec<Section>, String>),
     /// Missing details (artist, album) of a song, looked up on YouTube Music.
     TrackInfo(String, Track),
@@ -199,6 +200,7 @@ pub enum Action {
     CancelDownloads,
     NewPlaylist(String, Option<Track>),
     AddToPlaylist(String, Track),
+    AddToGooglePlaylist(String, Track),
     RemoveFromPlaylist(String, usize),
     DeletePlaylist(String),
     RenamePlaylist(String, String),
@@ -1323,6 +1325,10 @@ impl App {
                     Err(e) => self.toast(format!("Couldn't load your YouTube Music library: {e}")),
                 }
             }
+            Msg::GooglePlaylistAdded(name, result) => match result {
+                Ok(()) => self.toast(format!("Added to {name}")),
+                Err(e) => self.toast(format!("Couldn't add to {name}: {e}")),
+            },
             Msg::DeezerHome(r) => {
                 self.deezer_home = match r {
                     Ok(v) => Loadable::Ready(v),
@@ -2828,6 +2834,16 @@ impl App {
                 self.store.save();
                 let name = self.store.playlists.iter().find(|p| p.id == pid).map(|p| p.name.clone()).unwrap_or_default();
                 self.toast(if ok { format!("Added to {name}") } else { format!("Already in {name}") });
+            }
+            Action::AddToGooglePlaylist(pid, t) => {
+                if !crate::providers::google_connected() {
+                    self.toast("Connect a Google account to add songs to YouTube Music playlists");
+                } else if let Some(video_id) = self.known_video_id(&t) {
+                    let name = self.store.gl_playlists.iter().find(|p| p.id == pid).map(|p| p.title.clone()).unwrap_or_else(|| "YouTube Music playlist".into());
+                    self.spawn(move || Msg::GooglePlaylistAdded(name.clone(), crate::ytm::add_to_playlist(&pid, &video_id)));
+                } else {
+                    self.toast("This song has no YouTube Music match");
+                }
             }
             Action::RemoveFromPlaylist(pid, i) => {
                 if let Some(p) = self.store.playlists.iter_mut().find(|p| p.id == pid) {

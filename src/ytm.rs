@@ -60,6 +60,20 @@ pub fn rate(video_id: &str, like: bool) -> Result<(), String> {
     post(endpoint, json!({"target": {"videoId": video_id}})).map(|_| ())
 }
 
+/// Add a song to a playlist owned by the signed-in YouTube Music account.
+pub fn add_to_playlist(playlist_id: &str, video_id: &str) -> Result<(), String> {
+    let playlist_id = playlist_id.strip_prefix("VL").unwrap_or(playlist_id);
+    let result = post("playlist/add", json!({"playlistId": playlist_id, "videoIds": [video_id]}))?;
+    if let Some(error) = result["error"]["message"].as_str() {
+        return Err(format!("YouTube Music: {error}"));
+    }
+    if result["playlistEditResults"].as_array().is_some_and(|items| !items.is_empty()) {
+        Ok(())
+    } else {
+        Err("YouTube Music didn't confirm that the song was added.".into())
+    }
+}
+
 // ---------------------------------------------------------------- audio versions
 
 /// What kind each video id is (MUSIC_VIDEO_TYPE_ATV = audio version, _OMV = official music video, ...).
@@ -598,7 +612,8 @@ fn parse_row(r: &Value, fallback_album: Option<(&str, &str, Option<&str>)>) -> O
         .or_else(|| {
             first(&r["overlay"], "watchEndpoint").and_then(|w| w["videoId"].as_str())
         })
-        .map(String::from);
+        .map(String::from)
+        .or_else(|| find_str(r, "videoId"));
 
     if let Some(vid) = video_id {
         if let Some(t) = find_str(r, "musicVideoType") {
@@ -639,7 +654,12 @@ fn parse_row(r: &Value, fallback_album: Option<(&str, &str, Option<&str>)>) -> O
         return Some(Item { kind, id: vid, title, subtitle, thumb, track: Some(track) });
     }
 
-    let ep = &r["navigationEndpoint"];
+    let ep = title_v["runs"]
+        .as_array()
+        .and_then(|runs| runs.first())
+        .map(|run| &run["navigationEndpoint"])
+        .filter(|ep| !ep.is_null())
+        .unwrap_or(&r["navigationEndpoint"]);
     let browse_id = ep["browseEndpoint"]["browseId"].as_str()?.to_string();
     let kind = match page_type(ep) {
         Some("MUSIC_PAGE_TYPE_ALBUM") => ItemKind::Album,
@@ -659,6 +679,53 @@ fn parse_row(r: &Value, fallback_album: Option<(&str, &str, Option<&str>)>) -> O
     Some(Item { kind, id: browse_id, title, subtitle: bits.join(" • "), thumb, track: None })
 }
 
+fn parse_playlist_panel(r: &Value) -> Option<Track> {
+    let video_id = r["videoId"].as_str()?;
+    let parts = split_subtitle(&runs(&r["longBylineText"]));
+    let short_artist = runs_text(&r["shortBylineText"]);
+    let long_artist = runs_text(&r["longBylineText"]);
+    Some(Track {
+        source: Source::YouTube(video_id.into()),
+        title: runs_text(&r["title"]),
+        artist: if parts.names.is_empty() {
+            if !short_artist.is_empty() {
+                short_artist
+            } else {
+                parts.other.first().cloned().unwrap_or(long_artist)
+            }
+        } else {
+            parts.names
+        },
+        artist_id: parts.first_id,
+        album: parts.album,
+        album_id: parts.album_id,
+        duration_ms: parse_duration(&runs_text(&r["lengthText"])).unwrap_or(parts.duration_ms),
+        thumb: best_thumb(&r["thumbnail"]),
+    })
+}
+
+fn append_playlist_tracks(v: &Value, page: &mut PlaylistPage) {
+    let mut panel = Vec::new();
+    collect(v, "playlistPanelVideoRenderer", &mut panel);
+    collect(v, "playlistVideoRenderer", &mut panel);
+    for r in panel {
+        if let Some(track) = parse_playlist_panel(r) {
+            if !page.tracks.iter().any(|t| t.source == track.source) {
+                page.tracks.push(track);
+            }
+        }
+    }
+    let mut cards = Vec::new();
+    collect(v, "musicTwoRowItemRenderer", &mut cards);
+    for r in cards {
+        if let Some(track) = parse_card(r).and_then(|item| item.track) {
+            if !page.tracks.iter().any(|t| t.source == track.source) {
+                page.tracks.push(track);
+            }
+        }
+    }
+}
+
 /// Turn a `musicTwoRowItemRenderer` (a card) into an item.
 fn parse_card(r: &Value) -> Option<Item> {
     let title = runs_text(&r["title"]);
@@ -666,7 +733,12 @@ fn parse_card(r: &Value) -> Option<Item> {
     let parts = split_subtitle(&sub_runs);
     let subtitle = runs_text(&r["subtitle"]);
     let thumb = best_thumb(&r["thumbnailRenderer"]);
-    let ep = &r["navigationEndpoint"];
+    let ep = r["title"]["runs"]
+        .as_array()
+        .and_then(|runs| runs.first())
+        .map(|run| &run["navigationEndpoint"])
+        .filter(|ep| !ep.is_null())
+        .unwrap_or(&r["navigationEndpoint"]);
     if let Some(vid) = ep["watchEndpoint"]["videoId"].as_str() {
         let track = Track {
             source: Source::YouTube(vid.to_string()),
@@ -698,7 +770,89 @@ fn parse_any_item(container: &Value) -> Option<Item> {
     if let Some(r) = container.get("musicTwoRowItemRenderer") {
         return parse_card(r);
     }
+    if let Some(r) = container.get("playlistPanelVideoRenderer").or_else(|| container.get("playlistVideoRenderer")) {
+        return parse_playlist_panel(r).map(|track| Item::from_track(&track));
+    }
     None
+}
+
+fn parse_library_playlist(r: &Value, renderer: &str) -> Option<Item> {
+    let data = r.get(renderer)?;
+    let title_value = match renderer {
+        "musicResponsiveListItemRenderer" => {
+            &data["flexColumns"][0]["musicResponsiveListItemFlexColumnRenderer"]["text"]
+        }
+        _ => &data["title"],
+    };
+    let title = runs_text(title_value);
+    if title.is_empty() {
+        return None;
+    }
+    let endpoint = title_value["runs"][0]["navigationEndpoint"]
+        .as_object()
+        .map(|_| &title_value["runs"][0]["navigationEndpoint"])
+        .or_else(|| data["navigationEndpoint"].as_object().map(|_| &data["navigationEndpoint"]));
+    let browse_id = endpoint
+        .and_then(|ep| ep["browseEndpoint"]["browseId"].as_str())
+        .or_else(|| data["playlistId"].as_str())
+        .map(String::from)
+        .or_else(|| find_str(data, "browseId"))
+        .or_else(|| find_str(data, "playlistId"))?;
+    let is_playlist = endpoint
+        .and_then(page_type)
+        .is_some_and(|kind| kind == "MUSIC_PAGE_TYPE_PLAYLIST")
+        || browse_id.starts_with("VL")
+        || browse_id.starts_with("PL")
+        || data["subtitle"].as_str().is_some_and(|s| s.to_lowercase().contains("playlist"));
+    if !is_playlist || browse_id == "VLLM" {
+        return None;
+    }
+    let subtitle = if renderer == "musicResponsiveListItemRenderer" {
+        data["flexColumns"]
+            .as_array()
+            .map(|cols| {
+                cols.iter()
+                    .skip(1)
+                    .map(|col| runs_text(&col["musicResponsiveListItemFlexColumnRenderer"]["text"]))
+                    .filter(|text| !text.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" • ")
+            })
+            .unwrap_or_default()
+    } else {
+        runs_text(&data["subtitle"])
+    };
+    Some(Item {
+        kind: ItemKind::Playlist,
+        id: browse_id,
+        title,
+        subtitle,
+        thumb: best_thumb(&data["thumbnail"]).or_else(|| best_thumb(&data["thumbnailRenderer"])),
+        track: None,
+    })
+}
+
+pub fn library_playlists() -> Result<Vec<Item>, String> {
+    let v = post("browse", json!({"browseId": "FEmusic_liked_playlists"}))?;
+    let mut items = Vec::new();
+    for (renderer, key) in [
+        ("musicResponsiveListItemRenderer", "musicResponsiveListItemRenderer"),
+        ("musicTwoRowItemRenderer", "musicTwoRowItemRenderer"),
+        ("gridPlaylistRenderer", "gridPlaylistRenderer"),
+    ] {
+        let mut rows = Vec::new();
+        collect(&v, key, &mut rows);
+        items.extend(rows.into_iter().filter_map(|row| parse_library_playlist(row, renderer)));
+    }
+    let mut seen = std::collections::HashSet::new();
+    items.retain(|item| seen.insert(item.id.clone()));
+    if items.is_empty() {
+        eprintln!(
+            "[senthym] YouTube Music playlist library returned no playlists; response renderers: {}",
+            renderer_summary(&v)
+        );
+    }
+    Ok(items)
 }
 
 fn shelf_title(header: &Value) -> String {
@@ -924,6 +1078,12 @@ pub fn playlist_progressive(browse_id: &str, emit: &mut dyn FnMut(&PlaylistPage)
         }
     };
     push_rows(rows, &mut page);
+    append_playlist_tracks(&v, &mut page);
+    if page.tracks.is_empty() {
+        let playlist_id = id.strip_prefix("VL").unwrap_or(&id);
+        let panel = post("next", json!({"playlistId": playlist_id, "isAudioOnly": true}))?;
+        append_playlist_tracks(&panel, &mut page);
+    }
     if page.title.is_empty() {
         page.title = "Playlist".into();
     }
@@ -937,10 +1097,12 @@ pub fn playlist_progressive(browse_id: &str, emit: &mut dyn FnMut(&PlaylistPage)
         let Ok(more) = post("browse", json!({"continuation": token})) else { break };
         let mut rows = Vec::new();
         collect(&more, "musicResponsiveListItemRenderer", &mut rows);
-        if rows.is_empty() {
+        let before = page.tracks.len();
+        push_rows(rows, &mut page);
+        append_playlist_tracks(&more, &mut page);
+        if page.tracks.len() == before {
             break;
         }
-        push_rows(rows, &mut page);
         cont = first(&more, "continuationCommand").and_then(|c| c["token"].as_str()).map(String::from);
         page.loading_more = cont.is_some() && n < 3;
         if page.loading_more {
@@ -963,19 +1125,9 @@ pub fn radio(video_id: &str, playlist_id: Option<&str>) -> Result<Vec<Track>, St
     collect(&v, "playlistPanelVideoRenderer", &mut panel);
     let mut out = vec![];
     for p in panel {
-        let Some(vid) = p["videoId"].as_str() else { continue };
-        let parts = split_subtitle(&runs(&p["longBylineText"]));
-        let duration_ms = parse_duration(&runs_text(&p["lengthText"])).unwrap_or(parts.duration_ms);
-        out.push(Track {
-            source: Source::YouTube(vid.into()),
-            title: runs_text(&p["title"]),
-            artist: if parts.names.is_empty() { runs_text(&p["shortBylineText"]) } else { parts.names },
-            artist_id: parts.first_id,
-            album: parts.album,
-            album_id: parts.album_id,
-            duration_ms,
-            thumb: best_thumb(&p["thumbnail"]),
-        });
+        if let Some(track) = parse_playlist_panel(p) {
+            out.push(track);
+        }
     }
     Ok(out)
 }
@@ -999,21 +1151,79 @@ pub fn categories() -> Result<Vec<Category>, String> {
     Ok(out)
 }
 
+fn parse_category_sections(v: &Value) -> Vec<Section> {
+    let mut sections = sections_of(v);
+    let mut shelves = Vec::new();
+    collect(v, "musicShelfRenderer", &mut shelves);
+    for shelf in shelves {
+        let items: Vec<Item> = shelf["contents"]
+            .as_array()
+            .map(|rows| rows.iter().filter_map(parse_any_item).collect())
+            .unwrap_or_default();
+        if !items.is_empty() {
+            let title = runs_text(&shelf["title"]);
+            sections.push(Section { title, items });
+        }
+    }
+    let mut grids = Vec::new();
+    collect(v, "gridRenderer", &mut grids);
+    collect(v, "musicGridRenderer", &mut grids);
+    for g in grids {
+        let title = runs_text(&g["header"]["gridHeaderRenderer"]["title"]);
+        let rows = g["items"].as_array().or_else(|| g["contents"].as_array());
+        let items: Vec<Item> = rows.map(|a| a.iter().filter_map(parse_any_item).collect()).unwrap_or_default();
+        if !items.is_empty() {
+            sections.push(Section { title, items });
+        }
+    }
+    let mut unsectioned = Vec::new();
+    let mut rows = Vec::new();
+    collect(v, "musicResponsiveListItemRenderer", &mut rows);
+    unsectioned.extend(rows.into_iter().filter_map(|row| parse_row(row, None)));
+    let mut cards = Vec::new();
+    collect(v, "musicTwoRowItemRenderer", &mut cards);
+    unsectioned.extend(cards.into_iter().filter_map(parse_card));
+    let mut seen: std::collections::HashSet<String> = sections.iter().flat_map(|s| &s.items).map(|i| i.id.clone()).collect();
+    unsectioned.retain(|item| seen.insert(item.id.clone()));
+    if !unsectioned.is_empty() {
+        sections.push(Section { title: String::new(), items: unsectioned });
+    }
+    sections
+}
+
+fn renderer_summary(v: &Value) -> String {
+    fn visit(v: &Value, counts: &mut std::collections::BTreeMap<String, usize>) {
+        match v {
+            Value::Object(object) => {
+                for (key, child) in object {
+                    if key.ends_with("Renderer") {
+                        *counts.entry(key.clone()).or_default() += 1;
+                    }
+                    visit(child, counts);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    visit(item, counts);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut counts = std::collections::BTreeMap::new();
+    visit(v, &mut counts);
+    counts.into_iter().map(|(key, count)| format!("{key}:{count}")).collect::<Vec<_>>().join(", ")
+}
+
 pub fn category(browse_id: &str, params: Option<&str>) -> Result<Vec<Section>, String> {
     let mut body = json!({"browseId": browse_id});
     if let Some(p) = params {
         body["params"] = json!(p);
     }
     let v = post("browse", body)?;
-    let mut sections = sections_of(&v["contents"]);
-    let mut grids = Vec::new();
-    collect(&v["contents"], "gridRenderer", &mut grids);
-    for g in grids {
-        let title = runs_text(&g["header"]["gridHeaderRenderer"]["title"]);
-        let items: Vec<Item> = g["items"].as_array().map(|a| a.iter().filter_map(parse_any_item).collect()).unwrap_or_default();
-        if !items.is_empty() {
-            sections.push(Section { title, items });
-        }
+    let sections = parse_category_sections(&v);
+    if sections.iter().all(|section| section.items.is_empty()) {
+        eprintln!("[senthym] YouTube Music category {browse_id} returned no parsed items; response renderers: {}", renderer_summary(&v));
     }
     Ok(sections)
 }
@@ -1040,6 +1250,190 @@ pub fn video_id_from_link(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playlist_panel_rows_are_added_as_tracks() {
+        let response = json!({
+            "contents": [
+                {"playlistPanelVideoRenderer": {
+                    "videoId": "abcdefghijk",
+                    "title": {"runs": [{"text": "Song"}]},
+                    "longBylineText": {"runs": [{"text": "Artist"}]},
+                    "lengthText": {"runs": [{"text": "3:45"}]},
+                    "thumbnail": {"thumbnails": [{"url": "https://example.test/cover", "width": 120}]}
+                }},
+                {"playlistVideoRenderer": {
+                    "videoId": "lmnopqrstuv",
+                    "title": {"simpleText": "Another Song"},
+                    "shortBylineText": {"simpleText": "Another Artist"},
+                    "lengthText": {"simpleText": "4:02"}
+                }}
+            ]
+        });
+        let mut page = PlaylistPage::default();
+
+        append_playlist_tracks(&response, &mut page);
+        append_playlist_tracks(&response, &mut page);
+
+        assert_eq!(page.tracks.len(), 2);
+        assert_eq!(page.tracks[0].title, "Song");
+        assert_eq!(page.tracks[0].artist, "Artist");
+        assert_eq!(page.tracks[0].duration_ms, 225_000);
+        assert_eq!(page.tracks[1].title, "Another Song");
+        assert_eq!(page.tracks[1].artist, "Another Artist");
+        assert_eq!(page.tracks[1].duration_ms, 242_000);
+    }
+
+    #[test]
+    fn category_parser_reads_music_grid_playlist_cards() {
+        let response = json!({
+            "contents": {
+                "musicGridRenderer": {
+                    "header": {
+                        "gridHeaderRenderer": {"title": {"runs": [{"text": "Your playlists"}]}}
+                    },
+                    "items": [{
+                        "musicTwoRowItemRenderer": {
+                            "title": {"runs": [{"text": "My playlist"}]},
+                            "subtitle": {"runs": [{"text": "Playlist"}]},
+                            "navigationEndpoint": {
+                                "browseEndpoint": {
+                                    "browseId": "VLplaylist123",
+                                    "browseEndpointContextSupportedConfigs": {
+                                        "browseEndpointContextMusicConfig": {
+                                            "pageType": "MUSIC_PAGE_TYPE_PLAYLIST"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }]
+                }
+            }
+        });
+
+        let sections = parse_category_sections(&response);
+
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].title, "Your playlists");
+        assert_eq!(sections[0].items.len(), 1);
+        assert_eq!(sections[0].items[0].id, "VLplaylist123");
+        assert_eq!(sections[0].items[0].kind, ItemKind::Playlist);
+    }
+
+    #[test]
+    fn category_parser_reads_playlist_endpoint_from_row_title() {
+        let response = json!({
+            "contents": {
+                "musicGridRenderer": {
+                    "items": [{
+                        "musicResponsiveListItemRenderer": {
+                            "flexColumns": [
+                                {"musicResponsiveListItemFlexColumnRenderer": {
+                                    "text": {"runs": [{
+                                        "text": "My playlist",
+                                        "navigationEndpoint": {
+                                            "browseEndpoint": {
+                                                "browseId": "VLplaylist123",
+                                                "browseEndpointContextSupportedConfigs": {
+                                                    "browseEndpointContextMusicConfig": {
+                                                        "pageType": "MUSIC_PAGE_TYPE_PLAYLIST"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }]}
+                                }},
+                                {"musicResponsiveListItemFlexColumnRenderer": {
+                                    "text": {"runs": [{"text": "Playlist"}]}
+                                }}
+                            ]
+                        }
+                    }]
+                }
+            }
+        });
+
+        let sections = parse_category_sections(&response);
+
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].items.len(), 1);
+        assert_eq!(sections[0].items[0].id, "VLplaylist123");
+        assert_eq!(sections[0].items[0].title, "My playlist");
+        assert_eq!(sections[0].items[0].kind, ItemKind::Playlist);
+    }
+
+    #[test]
+    fn category_parser_finds_playlists_outside_known_shelf_wrappers() {
+        let response = json!({
+            "contents": {
+                "unknownLibraryContainer": [{
+                    "musicResponsiveListItemRenderer": {
+                        "flexColumns": [
+                            {"musicResponsiveListItemFlexColumnRenderer": {
+                                "text": {"runs": [{
+                                    "text": "My playlist",
+                                    "navigationEndpoint": {
+                                        "browseEndpoint": {
+                                            "browseId": "VLplaylist123",
+                                            "browseEndpointContextSupportedConfigs": {
+                                                "browseEndpointContextMusicConfig": {
+                                                    "pageType": "MUSIC_PAGE_TYPE_PLAYLIST"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }]}
+                            }},
+                            {"musicResponsiveListItemFlexColumnRenderer": {
+                                "text": {"runs": [{"text": "Playlist"}]}
+                            }}
+                        ]
+                    }
+                }]
+            }
+        });
+
+        let sections = parse_category_sections(&response);
+
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].items.len(), 1);
+        assert_eq!(sections[0].items[0].id, "VLplaylist123");
+    }
+
+    #[test]
+    fn library_playlist_parser_accepts_playlist_browse_ids_without_page_type() {
+        let row = json!({
+            "musicResponsiveListItemRenderer": {
+                "flexColumns": [
+                    {"musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {"runs": [{
+                            "text": "My playlist",
+                            "navigationEndpoint": {
+                                "browseEndpoint": {"browseId": "VLPLplaylist123"}
+                            }
+                        }]}
+                    }},
+                    {"musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {"runs": [{"text": "12 songs"}]}
+                    }}
+                ],
+                "thumbnail": {
+                    "musicThumbnailRenderer": {
+                        "thumbnail": {"thumbnails": [{"url": "https://example.test/cover", "width": 120}]}
+                    }
+                }
+            }
+        });
+
+        let item = parse_library_playlist(&row, "musicResponsiveListItemRenderer").unwrap();
+
+        assert_eq!(item.kind, ItemKind::Playlist);
+        assert_eq!(item.id, "VLPLplaylist123");
+        assert_eq!(item.title, "My playlist");
+        assert_eq!(item.subtitle, "12 songs");
+        assert!(item.thumb.is_some());
+    }
 
     // These encode the video-matching rules, so a wrong video can never come back:
     // a song must never show a lyric video, a visualizer, a re-upload or another artist's video,

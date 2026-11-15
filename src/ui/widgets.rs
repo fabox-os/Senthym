@@ -527,6 +527,30 @@ pub fn song_menu(ui: &mut Ui, app: &mut App, t: &Track, ctx: &RowContext) {
                 ui.close_menu();
             }
         }
+        if crate::providers::google_connected() {
+            if !app.store.playlists.is_empty() {
+                ui.separator();
+            }
+            ui.label(egui::RichText::new("YouTube Music").color(SUB));
+            let video_id = app.known_video_id(t);
+            if app.store.gl_playlists.is_empty() {
+                let message = if app.google_syncing { "Loading playlists…" } else { "No YouTube Music playlists found" };
+                ui.label(egui::RichText::new(message).color(SUB));
+                if !app.google_syncing && ui.button("Reload playlists").clicked() {
+                    app.google_sync();
+                }
+            } else {
+                for playlist in &app.store.gl_playlists {
+                    let button = ui.add_enabled(video_id.is_some(), egui::Button::new(playlist.title.as_str()));
+                    if video_id.is_none() {
+                        button.on_hover_text("This song has no YouTube Music match");
+                    } else if button.clicked() {
+                        app.actions.push(Action::AddToGooglePlaylist(playlist.id.clone(), t.clone()));
+                        ui.close_menu();
+                    }
+                }
+            }
+        }
     });
     if ui.button("Add to queue").clicked() {
         app.actions.push(Action::AddQueue(t.clone()));

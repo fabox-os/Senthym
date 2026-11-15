@@ -5,7 +5,8 @@
 //!   streams need its paid, protected files, which this app doesn't unlock.
 //! - Google account (YouTube Music): the sign-in already saved in the person's browser is read by
 //!   yt-dlp; with it, YouTube Music requests are made as that account, so its liked songs,
-//!   playlists, albums and artists can be saved into the app's own library.
+//!   playlists, albums and artists can be saved into the app's own library, and tracks can be
+//!   added to playlists in the signed-in YouTube Music account.
 
 use crate::model::*;
 use crate::store::data_dir;
@@ -298,13 +299,47 @@ pub fn google_library() -> Result<GoogleLibrary, String> {
     if !google_connected() {
         return Err("Not signed in with Google".into());
     }
-    let liked = crate::ytm::playlist("VLLM").map(|p| p.tracks).unwrap_or_default();
-    let grid = |id: &str| -> Vec<Item> { crate::ytm::category(id, None).map(|s| s.into_iter().flat_map(|x| x.items).collect()).unwrap_or_default() };
-    let playlists: Vec<Item> = grid("FEmusic_liked_playlists").into_iter().filter(|i| i.kind == ItemKind::Playlist && i.id != "VLLM" && !i.id.is_empty()).collect();
-    let albums: Vec<Item> = grid("FEmusic_liked_albums").into_iter().filter(|i| i.kind == ItemKind::Album).collect();
-    let artists: Vec<Item> = grid("FEmusic_library_corporate_artists").into_iter().filter(|i| i.kind == ItemKind::Artist).collect();
+    let mut errors = Vec::new();
+    let liked = match crate::ytm::playlist("VLLM") {
+        Ok(page) => page.tracks,
+        Err(e) => {
+            errors.push(format!("Liked Songs: {e}"));
+            Vec::new()
+        }
+    };
+    let playlists = match crate::ytm::library_playlists() {
+        Ok(items) => items,
+        Err(e) => {
+            errors.push(format!("Playlists: {e}"));
+            Vec::new()
+        }
+    };
+    let load_category = |id: &str, errors: &mut Vec<String>| {
+        match crate::ytm::category(id, None) {
+            Ok(sections) => sections.into_iter().flat_map(|section| section.items).collect(),
+            Err(e) => {
+                errors.push(format!("{id}: {e}"));
+                Vec::new()
+            }
+        }
+    };
+    let albums: Vec<Item> = load_category("FEmusic_liked_albums", &mut errors)
+        .into_iter()
+        .filter(|i| i.kind == ItemKind::Album)
+        .collect();
+    let artists: Vec<Item> = load_category("FEmusic_library_corpus_track_artists", &mut errors)
+        .into_iter()
+        .filter(|i| i.kind == ItemKind::Artist)
+        .collect();
     if liked.is_empty() && playlists.is_empty() && albums.is_empty() && artists.is_empty() {
+        if !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+        eprintln!("[senthym] YouTube Music library responses were successful but yielded no parsed entries (liked songs, playlists, albums, and artists: 0)");
         return Err("YouTube Music didn't return a library for this account. Check you're signed in to music.youtube.com in that browser.".into());
+    }
+    for error in errors {
+        eprintln!("[senthym] couldn't load part of the YouTube Music library: {error}");
     }
     Ok(GoogleLibrary { liked, playlists, albums, artists })
 }
