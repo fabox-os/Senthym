@@ -349,8 +349,10 @@ fn fullscreen(ctx: &egui::Context, app: &mut App) {
         .with_clip_rect(Rect::EVERYTHING)
         .rect_filled(screen.expand(4000.0), 0.0, Color32::BLACK);
     // Keep redrawing for a moment so the picture follows the window to its final size.
-    let entered: f64 = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("video_fs_entered"), || ctx.input(|i| i.time)));
-    if ctx.input(|i| i.time) - entered < 1.5 {
+    // (The time is read first: asking the context for input from inside its data lock would wait on itself forever.)
+    let now_t: f64 = ctx.input(|i| i.time);
+    let entered: f64 = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(egui::Id::new("video_fs_entered"), || now_t));
+    if now_t - entered < 1.5 {
         ctx.request_repaint();
     }
     egui::Area::new(egui::Id::new("video_full")).order(egui::Order::Tooltip).fixed_pos(screen.min).show(ctx, |ui| {

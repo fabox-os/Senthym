@@ -2,6 +2,11 @@
 
 All notable changes to Senthym. Newest first within each group.
 
+## 1.1.6 — 2026-11-24
+
+### Fixed
+- Clicking "Full screen" in the expanded Now playing view froze the program (it looked like a crash). The full-screen code waited on a lock held by itself. It now opens and closes full screen normally.
+
 ## 1.1.5 — 2026-11-24
 
 ### Fixed
