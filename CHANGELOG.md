@@ -10,6 +10,9 @@ All notable changes to Senthym. Newest first within each group.
 - YouTube songs with no cover showed a coloured letter. They now use the picture of their video, cut to a square without the black bars.
 - "Connect Spotify" no longer appears in the library list (Spotify stays optional under Settings → Accounts).
 
+### Changed
+- Release builds: the macOS app is built with Rust 1.99, because the newest Rust (1.100) cannot compile one of the window libraries used on macOS.
+
 ### Removed
 - Deezer as a source: no Deezer search results, charts, albums, playlists or artists. Libraries saved by older versions that hold Deezer songs still load, and those songs play from their YouTube Music match.
 
