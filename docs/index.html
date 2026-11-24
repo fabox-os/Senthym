@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Senthym — Your Music. Your Freedom.</title>
-<meta name="description" content="Senthym is a Spotify-style music player for Linux, Windows and macOS, written in Rust. Stream from YouTube Music, Deezer and SoundCloud with no ads, no subscription and no API keys. Free and open source, GPL-3.0.">
+<meta name="description" content="Senthym is a Spotify-style music player for Linux, Windows and macOS, written in Rust. Stream from YouTube Music and SoundCloud with no ads, no subscription and no API keys. Free and open source, GPL-3.0.">
 <meta property="og:title" content="Senthym — Your Music. Your Freedom.">
 <meta property="og:description" content="A Spotify-style music player for Linux, Windows and macOS, written in Rust. No ads, no subscription, no API keys.">
 <meta property="og:image" content="https://fabox-os.github.io/Senthym/screenshots/home-and-video.webp">
@@ -90,10 +90,10 @@ footer p{margin:6px 0;max-width:780px}.frow{display:flex;justify-content:space-b
 
 <header class="hero" id="top"><div class="wrap">
   <img class="hero-logo" src="logo-512.png" alt="Senthym logo"><br><br>
-  <div class="badge"><b>v1.1.4</b> Open source · GPL-3.0 · Linux, Windows &amp; macOS</div>
+  <div class="badge"><b>v1.1.5</b> Open source · GPL-3.0 · Linux, Windows &amp; macOS</div>
   <h1>Your Music.<span>Your Freedom.</span></h1>
   <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-  <p class="lead">Senthym is a <b>Spotify-style music player</b> written in pure Rust. Search and stream from YouTube Music, Deezer and SoundCloud with <b>no ads, no subscription and no API keys</b>. Play your own files, read synced lyrics and watch official music videos up to 1080p.</p>
+  <p class="lead">Senthym is a <b>Spotify-style music player</b> written in pure Rust. Search and stream from YouTube Music and SoundCloud with <b>no ads, no subscription and no API keys</b>. Play your own files, read synced lyrics and watch official music videos up to 1080p.</p>
   <div class="cta">
     <a class="btn p" href="#download">⬇ Download Senthym</a>
     <a class="btn" href="https://github.com/fabox-os/Senthym">★ View on GitHub</a>
@@ -107,7 +107,7 @@ footer p{margin:6px 0;max-width:780px}.frow{display:flex;justify-content:space-b
   <h2>Features</h2>
   <p class="sub">Everything you expect from a modern music app, with the interface you already know and nothing between you and your music.</p>
   <div class="grid">
-    <div class="card"><em>Sources</em><h3>Three sources, no keys</h3><p>YouTube Music is already set up. Deezer and SoundCloud are searched alongside it. No account and no API key needed; Spotify can be added optionally with your own key.</p></div>
+    <div class="card"><em>Sources</em><h3>Two sources, no keys</h3><p>YouTube Music is already set up. SoundCloud is searched alongside it. No account and no API key needed; Spotify can be added optionally with your own key.</p></div>
     <div class="card"><em>Search</em><h3>Search that gets out of the way</h3><p>Suggestions as you type, recent searches with covers, Browse all with genre and mood tiles, and each song listed once even when three sources have it.</p></div>
     <div class="card"><em>Playback</em><h3>Starts instantly</h3><p>Senthym gets songs ready before you press play: what you hover over, what is on screen and what plays next. Queue, shuffle, repeat, history and crossfade included.</p></div>
     <div class="card"><em>Video</em><h3>Music videos, up to 1080p</h3><p>Official videos, or the artist's live, acoustic and sessions films when there is no studio video. Every video is checked against the song. Switch to audio with one click.</p></div>
@@ -135,7 +135,7 @@ footer p{margin:6px 0;max-width:780px}.frow{display:flex;justify-content:space-b
   <h2>How it works</h2>
   <p class="sub">Senthym comes already set up. Open it, type a song and press play. There is nothing to configure, no account to create and no key to enter.</p>
   <div class="steps">
-    <div class="card"><h3>Search</h3><p>Results from YouTube Music, Deezer and SoundCloud appear together, merged so each song shows once. Remixes, live versions and covers stay separate.</p></div>
+    <div class="card"><h3>Search</h3><p>Results from YouTube Music and SoundCloud appear together, merged so each song shows once. Remixes, live versions and covers stay separate.</p></div>
     <div class="card"><h3>Play</h3><p>Senthym's own streaming engine fetches the song and plays it through its audio player, so crossfade, volume, seeking and lyrics work the same for every source.</p></div>
     <div class="card"><h3>Watch</h3><p>If the song has an official video, the picture plays in sync with the sound. Switch between video and audio at any moment, at the same position.</p></div>
     <div class="card"><h3>Keep going</h3><p>When the queue ends, autoplay blends songs from what you chose. If a source fails, another one takes over.</p></div>
@@ -162,7 +162,7 @@ footer p{margin:6px 0;max-width:780px}.frow{display:flex;justify-content:space-b
     <li>The macOS build gets less testing than Linux and Windows, and the app is not notarized</li>
     <li>The in-app update has not been tried on a real macOS install yet</li>
     <li>Importing a sign-in from an installed browser only finds Linux browsers (sign in inside the app elsewhere)</li>
-    <li>The fallback to another source takes a few seconds, and Deezer only gives 30-second previews</li>
+    <li>The fallback to another source takes a few seconds</li>
   </ul>
   <a class="btn" href="https://github.com/fabox-os/Senthym/blob/main/ROADMAP.md">Read the roadmap</a>
   <a class="btn" href="https://github.com/fabox-os/Senthym/blob/main/CHANGELOG.md">Changelog</a>
@@ -220,7 +220,7 @@ footer p{margin:6px 0;max-width:780px}.frow{display:flex;justify-content:space-b
       <p>Free and open source software, GPL-3.0.</p></div>
     <div class="flinks"><a href="https://github.com/fabox-os/Senthym">GitHub</a><a href="https://github.com/fabox-os/Senthym/releases">Releases</a><a href="https://discord.gg/6VjX67S67d">Discord</a><a href="https://github.com/fabox-os/Senthym/blob/main/ROADMAP.md">Roadmap</a><a href="https://github.com/fabox-os/Senthym/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/fabox-os/Senthym/blob/main/LICENSE">Licence</a></div>
   </div>
-  <p class="fine">Senthym is an independent project. It is not affiliated with, sponsored by or endorsed by Spotify, YouTube, Deezer or SoundCloud. Their names and trademarks belong to their owners and are used only to say which services Senthym can search and play from, and which layout it follows.</p>
+  <p class="fine">Senthym is an independent project. It is not affiliated with, sponsored by or endorsed by Spotify, YouTube or SoundCloud. Their names and trademarks belong to their owners and are used only to say which services Senthym can search and play from, and which layout it follows.</p>
 </div></footer>
 </body>
 </html>

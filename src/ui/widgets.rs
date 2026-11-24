@@ -187,6 +187,9 @@ pub fn track_cover_key(t: &Track) -> Option<String> {
     match (&t.thumb, &t.source) {
         (Some(u), _) => Some(u.clone()),
         (None, Source::Local(p)) => Some(format!("file:{p}")),
+        // A YouTube song with no cover of its own uses its video's picture (cropped square when drawn),
+        // instead of a coloured letter.
+        (None, Source::YouTube(id)) if !id.is_empty() => Some(format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg")),
         _ => None,
     }
 }
@@ -795,7 +798,7 @@ pub fn track_row(ui: &mut Ui, app: &mut App, t: &Track, opts: RowOpts) -> bool {
 /// The page a card opens, when it is one we can load ahead of the click.
 pub fn item_route(it: &Item) -> Option<crate::app::Route> {
     use crate::app::Route;
-    if it.id == "liked" || it.id == "local" || it.id.starts_with("sp:") || it.id.starts_with("dz:") || it.track.is_some() {
+    if it.id == "liked" || it.id == "local" || it.id.starts_with("sp:") || it.track.is_some() {
         return None;
     }
     match it.kind {

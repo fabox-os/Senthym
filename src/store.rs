@@ -268,8 +268,19 @@ impl Store {
     pub fn save(&self) {
         if let Ok(s) = serde_json::to_string(self) {
             let tmp = Self::path().with_extension("json.tmp");
-            if std::fs::write(&tmp, s).is_ok() {
-                let _ = std::fs::rename(tmp, Self::path());
+            let path = Self::path();
+            let written = std::fs::write(&tmp, &s).is_ok() && std::fs::rename(&tmp, &path).is_ok();
+            if !written {
+                // On Windows the swap can fail while a virus scanner or the search indexer has the file
+                // open; write over the file directly rather than lose the change (a new playlist, a like).
+                let _ = std::fs::remove_file(&tmp);
+                for attempt in 0..5 {
+                    match std::fs::write(&path, &s) {
+                        Ok(()) => break,
+                        Err(e) if attempt == 4 => eprintln!("[senthym] couldn't save the library: {e}"),
+                        Err(_) => std::thread::sleep(std::time::Duration::from_millis(60)),
+                    }
+                }
             }
         }
     }

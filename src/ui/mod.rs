@@ -301,7 +301,8 @@ fn library_entries(app: &App) -> Vec<Entry> {
     v.push(Entry { cover: EntryCover::Kind(SidebarKind::Downloads), title: "Downloads".into(), sub: format!("{} downloaded", st.downloads.len()), route: Route::Downloads, group: None });
     v.push(Entry { cover: EntryCover::Kind(SidebarKind::History), title: "Listening history".into(), sub: "Your plays and stats".into(), route: Route::History, group: None });
     // The playlists you made come first (newest first), so a new one is right where you look.
-    for p in st.playlists.iter().rev() {
+    // (Stored newest first, so no reversing: a playlist made just now sits right after the fixed entries.)
+    for p in st.playlists.iter() {
         v.push(Entry { cover: EntryCover::Url(playlist_cover_key(p), false), title: p.name.clone(), sub: format!("Playlist • {} songs", p.tracks.len()), route: Route::UserPlaylist(p.id.clone()), group: Some(LibFilter::Playlists) });
     }
     // What you follow or saved yourself comes before the long synced lists, so it is never pushed out of sight.
@@ -325,15 +326,14 @@ fn library_entries(app: &App) -> Vec<Entry> {
             v.push(Entry { cover: EntryCover::Url(it.thumb.clone(), it.kind == ItemKind::Artist), title: it.title.clone(), sub: it.subtitle.clone(), route, group: kind_group(&it.kind) });
         }
     }
-    // Spotify library, or a way to connect it (hidden when the person chose to go without accounts).
+    // Spotify library, when Spotify is connected.
     if crate::spotify::logged_in() {
         v.push(Entry { cover: EntryCover::Kind(SidebarKind::SpotifyLiked), title: "Liked Songs".into(), sub: format!("Spotify • {} songs", st.sp_liked.len()), route: Route::SpotifyLiked, group: Some(LibFilter::Playlists) });
         for it in st.sp_playlists.iter().chain(st.sp_albums.iter()).chain(st.sp_artists.iter()) {
             v.push(Entry { cover: EntryCover::Url(it.thumb.clone(), it.kind == ItemKind::Artist), title: it.title.clone(), sub: it.subtitle.clone(), route: Route::SpotifyCollection(it.id.clone()), group: kind_group(&it.kind) });
         }
-    } else if !st.welcome_dismissed {
-        v.push(Entry { cover: EntryCover::Kind(SidebarKind::SpotifyConnect), title: "Connect Spotify".into(), sub: "Optional, needs a free key".into(), route: Route::SpotifyLogin, group: None });
     }
+    // (No "Connect Spotify" entry: Spotify is optional and is set up in Settings → Accounts.)
     v
 }
 
@@ -914,7 +914,6 @@ fn rail_card(ctx: &egui::Context, pos: egui::Pos2, title: &str, sub: &str, playi
 #[derive(Clone, Copy)]
 enum SidebarKind {
     SpotifyLiked,
-    SpotifyConnect,
     Liked,
     Local,
     Downloads,
@@ -924,13 +923,6 @@ enum SidebarKind {
 fn paint_kind_cover(ui: &mut egui::Ui, cover: Rect, kind: SidebarKind) {
     match kind {
         SidebarKind::SpotifyLiked => liked_cover(ui, cover, 4.0),
-        SidebarKind::SpotifyConnect => {
-            ui.painter().circle_filled(cover.center(), 24.0, spotify_pages::SPOTIFY_GREEN);
-            for (i, w) in [(0, 26.0), (1, 21.0), (2, 16.0)] {
-                let y = cover.center().y - 7.0 + i as f32 * 7.0;
-                ui.painter().line_segment([pos2(cover.center().x - w / 2.0, y), pos2(cover.center().x + w / 2.0, y)], Stroke::new(2.6_f32, Color32::BLACK));
-            }
-        }
         SidebarKind::Liked => liked_cover(ui, cover, 4.0),
         SidebarKind::Local => simple_cover(ui, cover, Color32::from_rgb(0x3A, 0x8D, 0xB5), "♫"),
         SidebarKind::Downloads => {
@@ -1511,7 +1503,7 @@ fn welcome(ctx: &egui::Context, app: &mut App) {
                         ui.add_space(4.0);
                     }
                     ui.add_space(8.0);
-                    ui.label(egui::RichText::new("Spotify, Deezer and SoundCloud can be added later in Settings. Deezer and SoundCloud need no account at all.").size(12.0).color(SUB));
+                    ui.label(egui::RichText::new("Spotify can be added later in Settings. SoundCloud needs no account at all.").size(12.0).color(SUB));
                 });
             });
             ui.allocate_space(size);

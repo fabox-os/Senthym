@@ -10,7 +10,8 @@ pub enum Source {
     Local(String),
     /// A song from the person's Spotify library; it plays from its YouTube Music match.
     Spotify(String),
-    /// A Deezer catalogue track (public, no key); it plays from its YouTube Music match.
+    /// Deezer is no longer a source; the variant stays only so libraries saved by older versions still
+    /// load. Such songs play from their YouTube Music match.
     Deezer(String),
     /// A link yt-dlp can play directly (SoundCloud and other sites it understands).
     Url(String),

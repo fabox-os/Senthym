@@ -469,9 +469,9 @@ pub fn now_playing(ui: &mut Ui, app: &mut App) {
                 (Source::Url(u), _) => format!("Link • {}", u.split('/').nth(2).unwrap_or("web")),
                 (Source::Deezer(_), _) => {
                     if app.store.download_for(&t).is_some() {
-                        "From Deezer • downloaded".to_string()
+                        "Downloaded".to_string()
                     } else {
-                        format!("From Deezer • streamed from YouTube Music • {}", app.store.settings.stream_quality.label())
+                        format!("Streamed from YouTube Music • {}", app.store.settings.stream_quality.label())
                     }
                 }
                 (Source::Spotify(_), _) => {
@@ -763,7 +763,7 @@ pub fn settings(ui: &mut Ui, app: &mut App) {
         }
     });
     ui.add_space(10.0);
-    ui.label(RichText::new("Not included in this desktop version: Deezer, the lossless servers and Soulseek.").size(12.0).color(SUB));
+    ui.label(RichText::new("Not included in this desktop version: the lossless servers and Soulseek.").size(12.0).color(SUB));
     ui.label(RichText::new(format!("Sound output: {}", app.engine.device_name)).size(12.0).color(SUB));
     ui.add_space(6.0);
     ui.label(RichText::new("Shortcuts: Space play/pause • Ctrl+→ / Ctrl+← next / previous • Ctrl+F search • Alt+← / Alt+→ back / forward").size(12.0).color(SUB));

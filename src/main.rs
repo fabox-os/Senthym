@@ -26,7 +26,10 @@ mod ytm;
 use eframe::egui;
 
 struct Gui {
-    app: app::App,
+    app: std::sync::Arc<std::sync::Mutex<app::App>>,
+    /// When the window last ran a frame (milliseconds since `base`), read by the heartbeat thread.
+    beat: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    base: std::time::Instant,
     screenshot: Option<std::path::PathBuf>,
     frames: u32,
     requested: bool,
@@ -41,45 +44,58 @@ struct Gui {
 
 impl eframe::App for Gui {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.app.images.poll(ctx);
-        self.app.update();
-        ui::draw(ctx, &mut self.app);
-        self.app.apply_actions();
-        if self.app.status.playing || self.app.loading {
+        // The player's own logic also runs from a background heartbeat (see `start_heartbeat`) when this
+        // window stops being drawn, so the app is shared with that thread behind a lock.
+        // Test hook: after this many seconds draw nothing at all, like a minimized window gets no frames.
+        if let Some(secs) = std::env::var("SENTHYM_TEST_BLACKOUT_AFTER").ok().and_then(|v| v.parse::<u64>().ok()) {
+            if self.started.elapsed() > std::time::Duration::from_secs(secs) {
+                ctx.request_repaint_after(std::time::Duration::from_millis(500));
+                return;
+            }
+        }
+        let shared = std::sync::Arc::clone(&self.app);
+        let mut guard = shared.lock().unwrap_or_else(|e| e.into_inner());
+        let app: &mut app::App = &mut guard;
+        self.beat.store(self.base.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+        app.images.poll(ctx);
+        app.update();
+        ui::draw(ctx, app);
+        app.apply_actions();
+        if app.status.playing || app.loading {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         } else {
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
         }
 
         if self.test_update {
-            match &self.app.update {
-                app::UpdateState::Idle => self.app.actions.push(app::Action::CheckUpdate),
-                app::UpdateState::Available(_) => self.app.actions.push(app::Action::DownloadUpdate),
+            match &app.update {
+                app::UpdateState::Idle => app.actions.push(app::Action::CheckUpdate),
+                app::UpdateState::Available(_) => app.actions.push(app::Action::DownloadUpdate),
                 _ => {}
             }
         }
-        let pos = self.app.status.position_ms;
+        let pos = app.status.position_ms;
         while self.test_quality.first().map(|(at, _)| *at <= pos).unwrap_or(false) {
             let (_, h) = self.test_quality.remove(0);
             if h >= 10_000 {
                 // Values from 10000 up are a position to seek to (ms), to test the picture after a seek.
                 eprintln!("[senthym] test: seeking to {h} ms at {pos} ms");
-                self.app.actions.push(app::Action::Seek(h as u64));
+                app.actions.push(app::Action::Seek(h as u64));
             } else if h <= 1 {
                 // 0 / 1: switch to the audio / video version, to test the picture across the switch.
                 eprintln!("[senthym] test: switching to {} at {pos} ms", if h == 1 { "video" } else { "audio" });
-                self.app.actions.push(app::Action::SetVideoMode(h == 1));
+                app.actions.push(app::Action::SetVideoMode(h == 1));
             } else {
                 eprintln!("[senthym] test: asking for {h}p at {pos} ms");
-                self.app.actions.push(app::Action::SetVideoHeight(h));
+                app.actions.push(app::Action::SetVideoHeight(h));
             }
         }
         if let Some(path) = self.screenshot.clone() {
             self.frames += 1;
             ctx.request_repaint();
             // Wait for the home feed (or 10 s), then let ~120 frames draw before the picture.
-            let mut feed_ready = !matches!(self.app.home, app::Loadable::Loading);
-            if self.app.autoplay_query.is_some() || self.app.loading || self.app.test_seek_end || self.app.test_wait_fade || (self.wait_for_play && self.app.status.position_ms < self.play_wait_ms) {
+            let mut feed_ready = !matches!(app.home, app::Loadable::Loading);
+            if app.autoplay_query.is_some() || app.loading || app.test_seek_end || app.test_wait_fade || (self.wait_for_play && app.status.position_ms < self.play_wait_ms) {
                 feed_ready = false; // with --play, wait until the song has played a few seconds
             }
             let waited = self.started.elapsed() > std::time::Duration::from_secs(if self.wait_for_play { 120 } else { 10 });
@@ -116,6 +132,24 @@ impl eframe::App for Gui {
     }
 }
 
+/// Keep the player going while the window is not being drawn. A minimized (or hidden) window gets no
+/// frames at all, and the player's work (noticing that a song ended, starting the next one, taking in
+/// what the fetchers found) used to happen only inside a frame, so the next song waited until the window
+/// was shown again. This thread does that work itself whenever no frame has run for a moment; while the
+/// window is drawing normally it does nothing.
+fn start_heartbeat(app: std::sync::Arc<std::sync::Mutex<app::App>>, beat: std::sync::Arc<std::sync::atomic::AtomicU64>, base: std::time::Instant) {
+    let _ = std::thread::Builder::new().name("heartbeat".into()).spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let quiet = (base.elapsed().as_millis() as u64).saturating_sub(beat.load(std::sync::atomic::Ordering::Relaxed));
+        if quiet < 800 {
+            continue;
+        }
+        if let Ok(mut a) = app.try_lock() {
+            a.background_tick();
+        }
+    });
+}
+
 fn arg_value(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
 }
@@ -144,6 +178,7 @@ fn install_crash_log() {
 fn main() -> eframe::Result<()> {
     install_crash_log();
     sys::clean_old_update();
+    sys::keep_running_in_background();
     let args: Vec<String> = std::env::args().collect();
     if let Some(f) = arg_value(&args, "--decode-test") {
         // Developer check: decode a whole file and report its length.
@@ -167,10 +202,6 @@ fn main() -> eframe::Result<()> {
         match providers::soundcloud_search("kygo firestone") {
             Ok(v) => println!("soundcloud: {} results, first {:?}", v.len(), v.first().map(|i| i.title.clone())),
             Err(e) => println!("soundcloud error: {e}"),
-        }
-        match providers::deezer_search("kygo firestone") {
-            Ok(v) => println!("deezer: {} results, first {:?}", v.len(), v.first().map(|i| i.title.clone())),
-            Err(e) => println!("deezer error: {e}"),
         }
         match providers::google_library() {
             Ok(l) => println!("liked {} | playlists {} | albums {} | artists {}", l.liked.len(), l.playlists.len(), l.albums.len(), l.artists.len()),
@@ -298,7 +329,6 @@ fn main() -> eframe::Result<()> {
             None => (q, None),
         };
         let mut v = ytm::search(&q, filter).unwrap_or_default();
-        v.extend(providers::deezer_search(&q).unwrap_or_default());
         v.extend(providers::soundcloud_search(&q).unwrap_or_default());
         let before: Vec<String> = v.iter().filter(|i| i.kind == model::ItemKind::Song).map(|i| format!("{} | {} | {}", i.title, i.subtitle, i.track.as_ref().map(|t| t.duration_ms / 1000).unwrap_or(0))).collect();
         fallback::dedupe_songs(&mut v);
@@ -455,8 +485,14 @@ fn main() -> eframe::Result<()> {
                     _ => app::Route::Home,
                 };
             }
+            let app = std::sync::Arc::new(std::sync::Mutex::new(app));
+            let beat = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let base = std::time::Instant::now();
+            start_heartbeat(std::sync::Arc::clone(&app), std::sync::Arc::clone(&beat), base);
             Ok(Box::new(Gui {
                 app,
+                beat,
+                base,
                 screenshot,
                 frames: 0,
                 requested: false,

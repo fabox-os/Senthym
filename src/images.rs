@@ -161,7 +161,15 @@ fn load_bytes(key: &str) -> Option<Vec<u8>> {
 use std::io::Read as _;
 
 fn decode(bytes: &[u8], key: &str) -> Option<(ColorImage, Option<Color32>, Option<Color32>)> {
-    let img = image::load_from_memory(bytes).ok()?;
+    let mut img = image::load_from_memory(bytes).ok()?;
+    // A video picture (16:9, shown inside 4:3 black bars by YouTube) is cut to its middle square so it
+    // fits a cover without stretching.
+    if key.contains("ytimg.com/vi/") {
+        let (w, h) = (img.width(), img.height());
+        let (top, view_h) = if (w as f32 / h as f32 - 4.0 / 3.0).abs() < 0.03 { ((h - w * 9 / 16) / 2, w * 9 / 16) } else { (0, h) };
+        let side = view_h.min(w);
+        img = img.crop_imm((w - side) / 2, top + (view_h - side) / 2, side, side);
+    }
     // Covers are shrunk to 600 px; a wide banner keeps its sharpness (it is drawn across the page).
     let max = if key.contains("w1920-h1080") { 1920 } else { 600 };
     let img = if img.width() > max || img.height() > max { img.thumbnail(max, max) } else { img };
@@ -223,4 +231,26 @@ fn palette(img: &image::RgbaImage) -> (Option<Color32>, Option<Color32>) {
         best.map(|b| b.1)
     };
     (pick(1.0, 0.35, 1.0, 0.26, 0.0, 0.45), pick(0.3, 0.0, 0.4, 0.5, 0.3, 0.7))
+}
+
+#[cfg(test)]
+mod cover_tests {
+    use super::*;
+
+    fn png(w: u32, h: u32) -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(w, h, image::Rgba([200, 50, 50, 255]));
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    }
+
+    #[test]
+    fn video_picture_becomes_a_square_without_the_black_bars() {
+        let (c, _, _) = decode(&png(480, 360), "https://i.ytimg.com/vi/abc/hqdefault.jpg").unwrap();
+        assert_eq!(c.size, [270, 270]);
+        let (c, _, _) = decode(&png(320, 180), "https://i.ytimg.com/vi/abc/mqdefault.jpg").unwrap();
+        assert_eq!(c.size, [180, 180]);
+        let (c, _, _) = decode(&png(480, 360), "https://example.com/a.jpg").unwrap();
+        assert_eq!(c.size, [480, 360]);
+    }
 }

@@ -8,7 +8,7 @@
 
 ### A Spotify-style music player for Linux, Windows and macOS, written in Rust.
 
-Search and stream from YouTube Music, Deezer and SoundCloud with no ads, no subscription and no API keys. Your own files, synced lyrics and official music videos too.
+Search and stream from YouTube Music and SoundCloud with no ads, no subscription and no API keys. Your own files, synced lyrics and official music videos too.
 
 **Your Music. Your Freedom.**
 
@@ -49,7 +49,7 @@ Spotify, you already know where everything is. It has its own dark look with a b
 ## Features
 
 - **Instant playback.** Songs are fetched fast and prepared before you press play: what you hover over, what is on screen and what plays next. Queue, shuffle, repeat and a listening history included.
-- **Three sources, no keys.** YouTube Music is set up out of the box; Deezer and SoundCloud are searched alongside it, merged so each song appears once. No account and no API key. Spotify can be added optionally with your own key.
+- **Two sources, no keys.** YouTube Music is set up out of the box; SoundCloud is searched alongside it, merged so each song appears once. No account and no API key. Spotify can be added optionally with your own key.
 - **Search that gets out of the way.** Suggestions as you type, recent searches with covers, Browse all with genre and mood tiles, and keyboard navigation.
 - **Music videos up to 1080p.** The official video, or the artist's live, acoustic or sessions film when there is no studio video, always checked against the song. Switch between video and audio at the same moment, with a mini player, full screen and related videos over the picture.
 - **Quality that follows you.** Auto by default, or a fixed 1080p down to 240p. A change lands in a fraction of a second and never freezes the picture.
@@ -84,8 +84,8 @@ Senthym comes **already set up with YouTube Music**. Open the app, type a song a
 nothing to configure, no account to create and no key to enter.
 
 - **YouTube Music** is the main source: search, albums, artists, playlists, radio and related music videos.
-- **Deezer** and **SoundCloud** are searched alongside it, so you also find songs, remixes and tracks that
-  only exist there. Their results appear together with the others.
+- **SoundCloud** is searched alongside it, so you also find songs, remixes and tracks that
+  only exist there. Its results appear together with the others.
 - When you press play, Senthym's built-in streaming engine fetches the song and plays it through its own
   audio player, which is why crossfade, volume, seeking and lyrics work the same for every source.
 - If the song has an official music video, Senthym finds it and plays the picture in sync with the sound; you
@@ -102,7 +102,6 @@ Senthym brings several services together in one place, and **none of them needs 
 
 - **YouTube Music**
 - **SoundCloud**
-- **Deezer**
 
 Search, albums, artists and playlists work out of the box. You don't have to create an account or register
 anything.

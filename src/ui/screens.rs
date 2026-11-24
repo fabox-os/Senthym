@@ -457,7 +457,7 @@ fn home(ui: &mut Ui, app: &mut App) {
     if f == 2 {
         ui.add_space(30.0);
         ui.label(RichText::new("No podcasts yet").font(bold(20.0)).color(TEXT));
-        ui.label(RichText::new("Senthym plays music from YouTube Music, Deezer, Spotify and your own files.").color(SUB));
+        ui.label(RichText::new("Senthym plays music from YouTube Music, SoundCloud, Spotify and your own files.").color(SUB));
         return;
     }
 
@@ -479,19 +479,12 @@ fn home(ui: &mut Ui, app: &mut App) {
         ui.add_space(6.0);
     }
 
-    // Made For <name>: the personalised feed (YouTube Music home, else Deezer).
+    // Made For <name>: the personalised feed (YouTube Music home).
     let name = app.store.sp_user.as_ref().map(|u| u.name.clone()).unwrap_or_else(|| "You".into());
     let mut made_for: Vec<Item> = vec![];
     if let Loadable::Ready(sections) = &app.home {
         if let Some(sec) = sections.iter().find(|s| !(s.items.iter().all(|it| it.track.is_some()) && s.items.len() > 8) && !s.items.is_empty()) {
             made_for = sec.items.clone();
-        }
-    }
-    if made_for.is_empty() {
-        if let Loadable::Ready(sections) = &app.deezer_home {
-            if let Some(sec) = sections.iter().find(|s| !s.items.is_empty()) {
-                made_for = sec.items.clone();
-            }
         }
     }
     if made_for.is_empty() {

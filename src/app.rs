@@ -100,7 +100,7 @@ enum RadioPurpose {
 enum Msg {
     Home(Result<Vec<Section>, String>),
     Search(String, SearchTab, Result<Vec<Item>, String>),
-    /// More results for a search from another source (Deezer, SoundCloud), added when they arrive.
+    /// More results for a search from another source (SoundCloud), added when they arrive.
     SearchMore(String, SearchTab, Vec<Item>),
     Suggest(String, Vec<String>),
     BrowseCover(String, Option<String>),
@@ -141,7 +141,6 @@ enum Msg {
     SpotifyMatch(String, String),
     GoogleConnect(Result<(), String>),
     GoogleSync(Result<crate::providers::GoogleLibrary, String>),
-    DeezerHome(Result<Vec<Section>, String>),
     /// Missing details (artist, album) of a song, looked up on YouTube Music.
     TrackInfo(String, Track),
     Nothing,
@@ -418,7 +417,6 @@ pub struct App {
     pub google_busy: bool,
     pub google_syncing: bool,
     pub google_error: Option<String>,
-    pub deezer_home: Loadable<Vec<Section>>,
     /// `--test-crossfade`: jump near the end of the first song to try the crossfade.
     pub test_seek_end: bool,
     pub test_wait_fade: bool,
@@ -530,7 +528,6 @@ impl App {
             google_busy: false,
             google_syncing: false,
             google_error: None,
-            deezer_home: Loadable::Loading,
             test_seek_end: false,
             test_wait_fade: false,
             store,
@@ -550,7 +547,6 @@ impl App {
         if !crate::spotify::logged_in() && !crate::providers::google_connected() {
             app.show_welcome = !app.store.welcome_dismissed;
         }
-        app.spawn(|| Msg::DeezerHome(crate::providers::deezer_charts()));
         // Pick the person's taste up where they left it, so autoplay carries on in their style.
         app.taste = crate::taste::Taste::restore(app.store.taste_anchors.clone());
         // Bring back the last queue (paused where it stopped), like the original's PlaybackState.
@@ -664,9 +660,9 @@ impl App {
     /// Start loading the page behind a card or row the pointer rests on, so opening it is instant.
     pub fn prefetch_route(&mut self, r: &Route) {
         match r {
-            Route::Playlist(id) if !id.starts_with("sp:") && !id.starts_with("dz:") => self.ensure_playlist(id),
-            Route::Album(id) if !id.starts_with("sp:") && !id.starts_with("dz:") => self.ensure_album(id),
-            Route::Artist(id) if !id.starts_with("sp:") && !id.starts_with("dz:") => self.ensure_artist(id),
+            Route::Playlist(id) if !id.starts_with("sp:") => self.ensure_playlist(id),
+            Route::Album(id) if !id.starts_with("sp:") => self.ensure_album(id),
+            Route::Artist(id) if !id.starts_with("sp:") => self.ensure_artist(id),
             _ => {}
         }
     }
@@ -706,7 +702,7 @@ impl App {
     }
 
     /// Start a search before it is asked for (as it is typed, or for the other tabs): YouTube Music only,
-    /// which is quick. Deezer and SoundCloud are added by `run_search` when the search is really shown.
+    /// which is quick. SoundCloud is added by `run_search` when the search is really shown.
     pub fn prefetch_search(&mut self, q: &str, tab: SearchTab) {
         let q = q.trim().to_string();
         if q.chars().count() < 2 {
@@ -722,26 +718,8 @@ impl App {
         self.spawn(move || Msg::Search(q.clone(), tab, ytm::search(&q, filter)));
     }
 
-    /// Deezer's and SoundCloud's results for a search, each handed over when it arrives.
+    /// SoundCloud's results for a search, handed over when they arrive.
     fn spawn_search_extras(&self, q: &str, tab: SearchTab) {
-        let wants = move |k: &ItemKind| match tab {
-            SearchTab::Top => true,
-            SearchTab::Songs => *k == ItemKind::Song,
-            SearchTab::Albums => *k == ItemKind::Album,
-            SearchTab::Artists => *k == ItemKind::Artist,
-            SearchTab::Playlists => *k == ItemKind::Playlist,
-            SearchTab::Videos => false,
-        };
-        if tab != SearchTab::Videos {
-            let (tx, ctx, q2) = (self.tx.clone(), self.ctx.clone(), q.to_string());
-            std::thread::spawn(move || {
-                if let Ok(dz) = crate::providers::deezer_search(&q2) {
-                    let items: Vec<Item> = dz.into_iter().filter(|i| wants(&i.kind)).collect();
-                    let _ = tx.send(Msg::SearchMore(q2, tab, items));
-                    ctx.request_repaint();
-                }
-            });
-        }
         if matches!(tab, SearchTab::Top | SearchTab::Songs) {
             let (tx, ctx, q2) = (self.tx.clone(), self.ctx.clone(), q.to_string());
             std::thread::spawn(move || {
@@ -809,7 +787,7 @@ impl App {
             self.playlists.insert(id.to_string(), Loadable::Loading);
             let id = id.to_string();
             self.spawn(move || {
-                let r = if id.starts_with("dz:") { crate::providers::deezer_collection(&id) } else { crate::spotify::collection(&id) };
+                let r = crate::spotify::collection(&id);
                 Msg::SpotifyCollection(id.clone(), r)
             });
         }
@@ -1322,12 +1300,6 @@ impl App {
                     }
                     Err(e) => self.toast(format!("Couldn't load your YouTube Music library: {e}")),
                 }
-            }
-            Msg::DeezerHome(r) => {
-                self.deezer_home = match r {
-                    Ok(v) => Loadable::Ready(v),
-                    Err(e) => Loadable::Failed(e),
-                };
             }
             Msg::TrackInfo(key, info) => {
                 let fill = |t: &mut Track| {
@@ -2817,11 +2789,16 @@ impl App {
             }
             Action::NewPlaylist(name, t) => {
                 let id = self.store.new_playlist(&name);
+                let from_song = t.is_some();
                 if let Some(t) = t {
                     self.store.add_to_playlist(&id, &t);
                 }
                 self.store.save();
                 self.toast("Playlist created");
+                // Like Spotify: a playlist made from "Create" opens at once, so it is plain to see.
+                if !from_song {
+                    self.navigate(Route::UserPlaylist(id));
+                }
             }
             Action::AddToPlaylist(pid, t) => {
                 let ok = self.store.add_to_playlist(&pid, &t);
@@ -3034,10 +3011,6 @@ impl App {
 
     fn open_item(&mut self, item: Item) {
         self.page_hints.insert(item.id.clone(), item.clone());
-        if item.id.starts_with("dz:") && item.track.is_none() {
-            self.navigate(Route::SpotifyCollection(item.id.clone()));
-            return;
-        }
         if item.id.starts_with("sp:") && item.track.is_none() {
             self.navigate(Route::SpotifyCollection(item.id.clone()));
             return;
@@ -3070,14 +3043,6 @@ impl App {
         }
         if item.id == "sp-liked" {
             self.actions.push(Action::PlayTracks { tracks: self.store.sp_liked.clone(), start: 0, shuffle, context: Some(item) });
-            return;
-        }
-        if item.id.starts_with("dz:") {
-            let it = item.clone();
-            self.spawn(move || {
-                let r = crate::providers::deezer_collection(&it.id).map(|p| p.tracks);
-                Msg::PlayCollection(it, shuffle, r)
-            });
             return;
         }
         let it = item.clone();
@@ -3116,6 +3081,18 @@ impl App {
     }
 
     /// Run once per frame before drawing.
+    /// The player's work without any drawing: what `update` does for playback. Run by the heartbeat thread
+    /// while the window is minimized, so a song that ends still leads to the next one.
+    pub fn background_tick(&mut self) {
+        self.pump_prefetch();
+        self.run_autoplay_query();
+        while let Ok(m) = self.rx.try_recv() {
+            self.handle(m);
+        }
+        self.apply_actions();
+        self.tick_player();
+    }
+
     pub fn update(&mut self) {
         self.pump_prefetch();
         self.update_video();

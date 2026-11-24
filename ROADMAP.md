@@ -9,7 +9,7 @@ Spotify desktop app.
 > Naming: the product, crate, binary (`senthym`), window title, app id and data folder
 > (`~/.local/share/senthym`) are all **Senthym**. The folders of the earlier name are moved over on the first start.
 
-**Version 1.1.4** (2026-11-11). Versions 1.1.3, 1.1.2 and 1.1.1 came out on 2026-11-11, 1.1 on 2026-11-10 and 1.0 was the first release (2026-11-08). Everything is listed in the changelog.
+**Version 1.1.5** (2026-11-24). Versions 1.1.4, 1.1.3, 1.1.2 and 1.1.1 came out on 2026-11-11 on 2026-11-11, 1.1 on 2026-11-10 and 1.0 was the first release (2026-11-08). Everything is listed in the changelog.
 
 Legend: ✅ done · 🔧 in progress · ⬜ planned
 
@@ -22,7 +22,7 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 - ✅ Search dropdown: recent searches with covers, artist / song matches, keyboard navigation, suggestions
 - ✅ Picking an artist in the dropdown opens the artist page
 - ✅ Recent searches saved and shown with the item's cover
-- ✅ Search shows each song once (the same song from YouTube Music, Deezer and SoundCloud is merged; other versions stay)
+- ✅ Search shows each song once (the same song from YouTube Music and SoundCloud is merged; other versions stay)
 - ✅ Browse all: genre and mood tiles with covers behind them
 - ✅ Library rail (collapsed) and full library grid, "+ Create" menu, expand button, filters and search
 - ✅ Followed artists and saved albums / playlists listed right after your own playlists (before synced lists)
@@ -64,7 +64,7 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 - ✅ Performance films (Acoustic Version, Live, Sessions) stand in when the song has no studio video; remixes and other cuts never match
 - ✅ Every video pick verified against the song: artist named in the video's artist line, upload title or channel name, and the song's title present — a wrong artist's video can never show (unit tests in `ytm.rs`)
 - ✅ Videos on the artist's own channel (UGC) found and shown, not only label (OMV) videos; a video played from search always shows its own picture
-- ✅ A Spotify or Deezer library song is checked for a video too, against its YouTube Music match, the same verified way as a YouTube song — not only songs played directly from YouTube Music
+- ✅ A Spotify library song is checked for a video too, against its YouTube Music match, the same verified way as a YouTube song — not only songs played directly from YouTube Music
 - ✅ A different spelling of the same artist or title (VÆB / VAEB, a colon instead of a dash) still counts as a match; the artist and title are still both confirmed either way
 - ✅ A video the person picked themselves (search, a related video, a playlist row) always shows that exact video; it is no longer re-run through the "is this official" check meant for deciding whether to attach a video automatically to a plain song
 - ✅ A song's audio never waits for its video: the video is looked up fully in the background and only attaches its picture once found, so a song starts exactly as fast with the video setting on or off
@@ -86,6 +86,10 @@ Legend: ✅ done · 🔧 in progress · ⬜ planned
 - ✅ Synced YouTube Music library (liked, playlists, albums, artists)
 - ✅ Follow, like and save work signed in and signed out
 - ✅ Liked songs follow the YouTube Music account: one "Liked Songs" list (this computer + the account), hearts are sent to the account, and a new computer gets them after signing in
+- ✅ Playback goes on while the window is minimized: a background heartbeat notices the end of a song and starts the next one without a redraw (and Windows is asked not to slow the minimized app down)
+- ✅ A playlist you just made sits right after the fixed entries and opens at once; saving the library retries when Windows has the file busy
+- ✅ A YouTube song with no cover uses its video's picture instead of a letter
+- ✅ Deezer is no longer a source (old libraries that hold Deezer songs still load and play)
 - ✅ Song menus (the "⋯" button and right-click) are compact and Spotify-like: small text, tight rows, soft square highlight, no round button behind the dots
 - ✅ Same look on every system: Noto Sans and DejaVu Sans come with the program, system fonts are used for Chinese / Japanese / Korean and 【 】 marks; the "⋯" and search arrows are drawn as shapes
 - ✅ The streaming engine is set up when Senthym starts and on demand (Connect account, SoundCloud search), so a fresh install works at once; clear message if it can't download or, on Windows, won't start (Visual C++ Redistributable)

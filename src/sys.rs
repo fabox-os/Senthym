@@ -197,3 +197,28 @@ mod tests {
         assert_eq!(b("someunknownbrowser.desktop"), None);
     }
 }
+
+/// Windows slows a minimized program down ("efficiency mode"), which delayed the next song. Ask for the
+/// normal speed; older systems that don't know the request just ignore it.
+#[cfg(windows)]
+pub fn keep_running_in_background() {
+    #[repr(C)]
+    struct PowerThrottling {
+        version: u32,
+        control_mask: u32,
+        state_mask: u32,
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetCurrentProcess() -> isize;
+        fn SetProcessInformation(process: isize, class: i32, info: *const core::ffi::c_void, size: u32) -> i32;
+    }
+    // ProcessPowerThrottling = 4; version 1; the execution-speed bit (1) controlled, and not set (0): throttling off.
+    let s = PowerThrottling { version: 1, control_mask: 1, state_mask: 0 };
+    unsafe {
+        SetProcessInformation(GetCurrentProcess(), 4, &s as *const PowerThrottling as *const core::ffi::c_void, std::mem::size_of::<PowerThrottling>() as u32);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn keep_running_in_background() {}

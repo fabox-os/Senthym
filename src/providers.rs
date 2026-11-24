@@ -1,8 +1,5 @@
 //! Extra music sources, all usable without any developer key:
 //! - SoundCloud: public tracks, searched and played through the yt-dlp helper.
-//! - Deezer: its free public catalogue (search, charts, albums, playlists, artists); songs play
-//!   from their YouTube Music match, like the original plays Spotify songs. Deezer's own full
-//!   streams need its paid, protected files, which this app doesn't unlock.
 //! - Google account (YouTube Music): the sign-in already saved in the person's browser is read by
 //!   yt-dlp; with it, YouTube Music requests are made as that account, so its liked songs,
 //!   playlists, albums and artists can be saved into the app's own library.
@@ -11,11 +8,6 @@ use crate::model::*;
 use crate::store::data_dir;
 use serde_json::Value;
 use std::sync::Mutex;
-use std::time::Duration;
-
-fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout(Duration::from_secs(20)).build()
-}
 
 // ---------------------------------------------------------------- SoundCloud
 
@@ -57,122 +49,6 @@ pub fn soundcloud_search(query: &str) -> Result<Vec<Item>, String> {
         items.push(Item { kind: ItemKind::Song, id: url, title, subtitle: format!("SoundCloud • {artist}"), thumb, track: Some(track) });
     }
     Ok(items)
-}
-
-// ---------------------------------------------------------------- Deezer (public catalogue)
-
-const DEEZER: &str = "https://api.deezer.com";
-
-fn deezer_get(path: &str) -> Result<Value, String> {
-    let v: Value = agent().get(&format!("{DEEZER}{path}")).call().map_err(|e| format!("Couldn't reach Deezer ({e})"))?.into_json().map_err(|e| e.to_string())?;
-    if let Some(msg) = v["error"]["message"].as_str() {
-        return Err(format!("Deezer: {msg}"));
-    }
-    Ok(v)
-}
-
-fn dz_track(t: &Value, album: Option<&Value>) -> Option<Track> {
-    let id = t["id"].as_u64()?;
-    let alb = album.unwrap_or(&t["album"]);
-    Some(Track {
-        source: Source::Deezer(id.to_string()),
-        title: t["title"].as_str().unwrap_or("").to_string(),
-        artist: t["artist"]["name"].as_str().unwrap_or("").to_string(),
-        artist_id: t["artist"]["id"].as_u64().map(|a| format!("dz:artist:{a}")),
-        album: alb["title"].as_str().unwrap_or("").to_string(),
-        album_id: alb["id"].as_u64().map(|a| format!("dz:album:{a}")),
-        duration_ms: t["duration"].as_u64().unwrap_or(0) * 1000,
-        thumb: alb["cover_medium"].as_str().or(alb["cover_big"].as_str()).map(String::from),
-    })
-}
-
-fn dz_list(v: &Value, kind: ItemKind) -> Vec<Item> {
-    v["data"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| {
-                    let id = x["id"].as_u64()?;
-                    let (prefix, title, sub, thumb) = match kind {
-                        ItemKind::Album => ("album", x["title"].as_str(), format!("Album • {}", x["artist"]["name"].as_str().unwrap_or("")), x["cover_medium"].as_str()),
-                        ItemKind::Artist => ("artist", x["name"].as_str(), "Artist".to_string(), x["picture_medium"].as_str()),
-                        _ => ("playlist", x["title"].as_str(), format!("Playlist • {} songs", x["nb_tracks"].as_u64().unwrap_or(0)), x["picture_medium"].as_str()),
-                    };
-                    Some(Item { kind: kind.clone(), id: format!("dz:{prefix}:{id}"), title: title.unwrap_or("").to_string(), subtitle: format!("Deezer • {sub}"), thumb: thumb.map(String::from), track: None })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Songs, then albums, artists and playlists from Deezer's catalogue.
-pub fn deezer_search(query: &str) -> Result<Vec<Item>, String> {
-    let q = urlencoding::encode(query);
-    let tracks = deezer_get(&format!("/search?q={q}&limit=25"))?;
-    let mut items: Vec<Item> = tracks["data"].as_array().map(|a| a.iter().filter_map(|t| dz_track(t, None)).map(|t| {
-        let mut it = Item::from_track(&t);
-        it.subtitle = format!("Deezer • {}", t.artist);
-        it
-    }).collect()).unwrap_or_default();
-    if let Ok(v) = deezer_get(&format!("/search/album?q={q}&limit=10")) {
-        items.extend(dz_list(&v, ItemKind::Album));
-    }
-    if let Ok(v) = deezer_get(&format!("/search/artist?q={q}&limit=6")) {
-        items.extend(dz_list(&v, ItemKind::Artist));
-    }
-    if let Ok(v) = deezer_get(&format!("/search/playlist?q={q}&limit=10")) {
-        items.extend(dz_list(&v, ItemKind::Playlist));
-    }
-    Ok(items)
-}
-
-/// Deezer's chart for the home page.
-pub fn deezer_charts() -> Result<Vec<Section>, String> {
-    let mut out = vec![];
-    let v = deezer_get("/chart/0/tracks?limit=20")?;
-    let items: Vec<Item> = v["data"].as_array().map(|a| a.iter().filter_map(|t| dz_track(t, None)).map(|t| Item::from_track(&t)).collect()).unwrap_or_default();
-    out.push(Section { title: "Top songs on Deezer".into(), items });
-    if let Ok(v) = deezer_get("/chart/0/playlists?limit=12") {
-        out.push(Section { title: "Deezer playlists".into(), items: dz_list(&v, ItemKind::Playlist) });
-    }
-    if let Ok(v) = deezer_get("/chart/0/albums?limit=12") {
-        out.push(Section { title: "Popular albums on Deezer".into(), items: dz_list(&v, ItemKind::Album) });
-    }
-    Ok(out)
-}
-
-/// A Deezer album, playlist or artist (`dz:<kind>:<id>`) as a playlist page.
-pub fn deezer_collection(id: &str) -> Result<PlaylistPage, String> {
-    let mut parts = id.splitn(3, ':');
-    let (_, kind, did) = (parts.next(), parts.next().unwrap_or(""), parts.next().unwrap_or(""));
-    let mut page = PlaylistPage { id: id.to_string(), ..Default::default() };
-    match kind {
-        "album" => {
-            let v = deezer_get(&format!("/album/{did}"))?;
-            page.title = v["title"].as_str().unwrap_or("Album").to_string();
-            page.owner = v["artist"]["name"].as_str().unwrap_or("").to_string();
-            page.detail = v["release_date"].as_str().unwrap_or("").to_string();
-            page.thumb = v["cover_big"].as_str().map(String::from);
-            page.tracks = v["tracks"]["data"].as_array().map(|a| a.iter().filter_map(|t| dz_track(t, Some(&v))).collect()).unwrap_or_default();
-        }
-        "playlist" => {
-            let v = deezer_get(&format!("/playlist/{did}"))?;
-            page.title = v["title"].as_str().unwrap_or("Playlist").to_string();
-            page.owner = v["creator"]["name"].as_str().unwrap_or("").to_string();
-            page.thumb = v["picture_big"].as_str().map(String::from);
-            page.tracks = v["tracks"]["data"].as_array().map(|a| a.iter().filter_map(|t| dz_track(t, None)).collect()).unwrap_or_default();
-        }
-        "artist" => {
-            let v = deezer_get(&format!("/artist/{did}"))?;
-            page.title = v["name"].as_str().unwrap_or("Artist").to_string();
-            page.owner = "Artist".into();
-            page.thumb = v["picture_big"].as_str().map(String::from);
-            let top = deezer_get(&format!("/artist/{did}/top?limit=50"))?;
-            page.tracks = top["data"].as_array().map(|a| a.iter().filter_map(|t| dz_track(t, None)).collect()).unwrap_or_default();
-        }
-        _ => return Err("Unknown Deezer item".into()),
-    }
-    Ok(page)
 }
 
 // ---------------------------------------------------------------- Google account (YouTube Music)

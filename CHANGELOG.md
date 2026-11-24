@@ -2,6 +2,17 @@
 
 All notable changes to Senthym. Newest first within each group.
 
+## 1.1.5 — 2026-11-24
+
+### Fixed
+- Minimized window: the next song waited until the window was shown again. A minimized window gets no redraws, and the player only did its work inside a redraw. A background heartbeat now does that work whenever no frame has been drawn for a moment (noticing the end of a song, starting the next one, taking in what the fetchers found, preloading). On Windows the app also asks not to be slowed down ("efficiency mode") while minimized.
+- A playlist you made did not show where you expected: the library listed the newest one last. It is now right after the fixed entries, and a playlist made from "Create" opens at once, like Spotify. Saving the library also retries and writes directly when Windows has the file busy (virus scanner, indexer) instead of silently losing the change.
+- YouTube songs with no cover showed a coloured letter. They now use the picture of their video, cut to a square without the black bars.
+- "Connect Spotify" no longer appears in the library list (Spotify stays optional under Settings → Accounts).
+
+### Removed
+- Deezer as a source: no Deezer search results, charts, albums, playlists or artists. Libraries saved by older versions that hold Deezer songs still load, and those songs play from their YouTube Music match.
+
 ## 1.1.4 — 2026-11-11
 
 ### Fixed
